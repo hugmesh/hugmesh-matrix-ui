@@ -1,0 +1,10 @@
+.search-view{padding:8px;max-width:560px}
+.bar{display:flex;gap:6px}
+.bar input{flex:1;padding:6px}
+.scope{font-size:12px;color:#888}
+.count{font-size:12px;color:#666}
+.results{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.result a{display:flex;flex-direction:column;text-decoration:none;color:inherit;background:#f7f7f7;border-radius:6px;padding:6px}
+.sender{font-weight:600;font-size:13px}
+.room{font-size:11px;color:#888}
+.snippet{font-size:13px}

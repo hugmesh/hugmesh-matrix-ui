@@ -1,0 +1,206 @@
+@use '../styles/tokens' as t;
+@use '../styles/mixins' as m;
+
+.role-actions {
+  position: relative;
+  display: inline-block;
+
+  &.inline {
+    display: block;
+    width: 100%;
+  }
+}
+
+.role-actions-trigger {
+  background: transparent;
+  color: t.$light;
+  border: 1px solid rgba(t.$neon, t.$opacity-border);
+  border-radius: t.$radius-sm;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 4px 8px;
+  transition: border-color t.$transition-base, color t.$transition-base;
+
+  &:hover,
+  &:focus-visible {
+    color: t.$neon-bright;
+    border-color: rgba(t.$neon, 0.5);
+  }
+}
+
+.role-actions-menu {
+  @include m.card-surface;
+  position: absolute;
+  z-index: t.$z-overlay;
+  top: calc(100% + 4px);
+  right: 0;
+  width: min(360px, 90vw);
+  padding: 12px;
+  color: t.$offwhite;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+  &.inline {
+    position: static;
+    width: 100%;
+    max-width: 640px;
+  }
+}
+
+.result {
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: t.$radius-sm;
+  font-size: 13px;
+
+  &.status {
+    background: rgba(t.$pastel-mint, 0.12);
+    border: 1px solid rgba(var(--hug-success), 0.4);
+    color: var(--hug-success);
+  }
+
+  &.error {
+    background: rgba(t.$pastel-rose, 0.12);
+    border: 1px solid rgba(var(--hug-error), 0.4);
+    color: var(--hug-error);
+  }
+}
+
+.tier {
+  border-top: 1px solid rgba(t.$neon, t.$opacity-border);
+  padding-top: 8px;
+
+  &:first-of-type {
+    border-top: 0;
+    padding-top: 0;
+  }
+
+  h4 {
+    margin: 0 0 6px;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: t.$neon;
+  }
+
+  h5 {
+    margin: 8px 0 4px;
+    font-size: 12px;
+    color: t.$light;
+  }
+}
+
+.mod-tier h4 {
+  color: t.$pastel-sky;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin: 4px 0;
+
+  input,
+  select {
+    flex: 1 1 auto;
+    min-width: 0;
+    background: rgba(t.$black, 0.4);
+    color: t.$offwhite;
+    border: 1px solid rgba(t.$neon, t.$opacity-border);
+    border-radius: t.$radius-sm;
+    padding: 4px 6px;
+  }
+
+  button {
+    flex: 0 0 auto;
+  }
+}
+
+button {
+  background: rgba(t.$neon, 0.12);
+  color: t.$neon-bright;
+  border: 1px solid rgba(t.$neon, 0.4);
+  border-radius: t.$radius-sm;
+  cursor: pointer;
+  padding: 4px 10px;
+  font-size: 13px;
+
+  &:hover,
+  &:focus-visible {
+    background: rgba(t.$neon, 0.2);
+  }
+}
+
+.my-blocks ul,
+.queue ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+
+  li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    font-size: 13px;
+    border-bottom: 1px dashed rgba(t.$mid, 0.6);
+  }
+}
+
+.b-target,
+.q-target {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.b-platform,
+.q-kind,
+.q-status {
+  font-size: 11px;
+  color: t.$light;
+  background: rgba(t.$mid, 0.5);
+  border-radius: t.$radius-sm;
+  padding: 0 6px;
+}
+
+.q-status[data-status='referred'] {
+  color: t.$pastel-sky;
+}
+
+.q-status[data-status='approved'] {
+  color: var(--hug-success);
+}
+
+.q-status[data-status='denied'] {
+  color: var(--hug-error);
+}
+
+.queue-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.empty {
+  font-size: 12px;
+  color: t.$muted;
+  margin: 4px 0;
+}
+
+.admin-actions {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.stub-note {
+  font-size: 11px;
+  color: t.$muted;
+  font-style: italic;
+  margin: 6px 0 0;
+}

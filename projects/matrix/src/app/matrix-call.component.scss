@@ -1,0 +1,124 @@
+@use '../styles/tokens' as t;
+
+:host {
+  display: block;
+}
+
+.hug-call {
+  .videos {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  video {
+    width: 320px;
+    max-width: 100%;
+    background: #000;
+    margin: 4px;
+  }
+
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 0.5rem 0;
+  }
+
+  // MOBILE/TOUCH: Start/Join/Hang-up are the call's primary controls — grow
+  // them to the 44px touch minimum on phones and coarse pointers.
+  @media (max-width: t.$bp-md), (pointer: coarse) {
+    .actions button {
+      min-height: 44px;
+      min-width: 44px;
+      padding: 0 14px;
+    }
+  }
+
+  // ───────────── VN voice mode (the stage replaces the tiles) ─────────────
+
+  .vn-call {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  // Give the letterboxing stage a real box to fill (it sizes to its host).
+  .vn-stage-host {
+    width: 100%;
+    max-width: 960px;
+    aspect-ratio: 16 / 9;
+  }
+
+  // The remote voice sink is functional, not visual.
+  audio[data-testid='remote-audio'] {
+    display: none;
+  }
+
+  .scene-tools {
+    max-width: 960px;
+
+    summary {
+      cursor: pointer;
+      user-select: none;
+      font-weight: bold;
+      // TOUCH TARGET: the disclosure summary is a tap target too — 44px line.
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+    }
+
+    // MOBILE: the opened picker scrolls INTERNALLY so the call controls and
+    // stage stay reachable (the panel never grows the page unboundedly).
+    hug-vn-scene-controls {
+      display: block;
+      max-height: min(24rem, 60vh);
+      overflow-y: auto;
+    }
+  }
+}
+
+// The classic VN TYPEWRITER reveal, pure CSS: a left-to-right clip wipe in
+// discrete steps() so the line appears with a staccato typing cadence and
+// wrapped/multi-line bodies reveal cleanly (unlike the width-in-ch trick).
+// The *ngFor trackBy keys the node by eventId, so each NEW message recreates
+// the element and restarts the animation.
+.dialogue-line {
+  margin: 0;
+  // A single unbroken 500-char token must wrap inside the caption bar, never
+  // overflow it horizontally.
+  overflow-wrap: anywhere;
+  animation: vn-typewriter 1.4s steps(28, end) both;
+}
+
+.dialogue-sender {
+  margin-right: 0.5rem;
+  // A hostile/very long display name must not push the dialogue text off the
+  // bar: ellipsize the plate (LIMIT: 14rem) — the full name rides the title attr.
+  display: inline-block;
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+
+  &::after {
+    content: ':';
+  }
+}
+
+@keyframes vn-typewriter {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+// Reduced motion: no reveal animation — the full line shows immediately.
+@media (prefers-reduced-motion: reduce) {
+  .dialogue-line {
+    animation: none;
+  }
+}

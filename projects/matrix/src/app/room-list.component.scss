@@ -1,0 +1,15 @@
+.room-list{width:240px;border-right:1px solid #eee;padding:6px;overflow:auto}
+.toolbar,.join{display:flex;gap:4px;margin-bottom:6px}
+.join input{flex:1;min-width:0}
+.dialog{display:flex;flex-direction:column;gap:4px;margin-bottom:8px;background:#f7f7f7;padding:6px;border-radius:6px}
+ul{list-style:none;margin:0 0 8px;padding:0}
+h4{margin:6px 0 2px;font-size:12px;color:#888;text-transform:uppercase}
+.room{display:flex;align-items:center;gap:8px;padding:4px;border-radius:6px;text-decoration:none;color:inherit}
+.room:hover{background:#f0f0f0}
+.room.active{background:#e2ecff}
+.avatar{width:24px;height:24px;border-radius:50%;background:#ddd center/cover no-repeat;flex:none}
+.name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.badge{background:#3a6df0;color:#fff;border-radius:10px;font-size:11px;padding:0 6px}
+.invite{display:flex;align-items:center;gap:6px;padding:4px;border-radius:6px;flex-wrap:wrap}
+.invite .inviter{font-size:11px;color:#888;flex-basis:100%}
+.invite button{font-size:11px}

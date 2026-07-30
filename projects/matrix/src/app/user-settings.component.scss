@@ -1,0 +1,105 @@
+@use '../styles/tokens' as t;
+@use '../styles/chat-themes' as ct;
+
+// Per-user chat theming: this host is a registered theme root, so the mini
+// preview below restyles live off the same --hugm-chat-* vars the timeline and
+// composer consume.
+@include ct.chat-theme-host-rules;
+
+// MOBILE: when a host shell constrains this route's height (federated mode),
+// the settings page — chat-appearance editor included — scrolls INTERNALLY
+// instead of clipping. In the standalone shell (auto-height <main>) these
+// max-height/overflow rules are inert and the page scrolls as before.
+:host{display:block;min-height:0;max-height:100%;overflow-y:auto}
+
+.user-settings{display:flex;flex-direction:column;gap:8px;padding:8px;max-width:420px}
+header{display:flex;justify-content:space-between;align-items:center}
+label{display:flex;flex-direction:column;font-size:13px;gap:2px}
+.uid{font-size:13px;color:#555}
+.status{font-size:12px;color:#888}
+
+// ── Chat appearance ──
+.chat-appearance{display:flex;flex-direction:column;gap:8px}
+.chat-appearance h4{margin:0}
+
+.preset-row{display:flex;flex-wrap:wrap;gap:6px}
+
+.preset-swatch{
+  display:inline-flex;align-items:center;gap:6px;
+  font-size:12px;line-height:1;padding:6px 10px;cursor:pointer;
+  border:1px solid rgba(t.$neon, t.$opacity-border);border-radius:t.$radius-sm;
+  background:rgba(t.$mid, 0.15);
+
+  &.selected{border-color:var(--hugm-chat-accent, t.$neon);background:rgba(t.$mid, 0.35)}
+
+  .dot{width:12px;height:12px;border-radius:50%;border:2px solid transparent;flex:none}
+}
+
+.theme-colors{display:flex;flex-wrap:wrap;gap:10px}
+.theme-colors input[type='color']{width:56px;height:32px;padding:2px;cursor:pointer}
+
+// MOBILE/TOUCH: the chat-appearance controls (swatches, color wells, selects,
+// reset) grow to the 44px touch minimum on phones and coarse pointers.
+@media (max-width: t.$bp-md), (pointer: coarse) {
+  .preset-swatch{min-height:44px}
+  .theme-colors input[type='color']{width:64px;height:44px}
+  .chat-appearance select,
+  .chat-appearance button{min-height:44px}
+}
+
+// Visible keyboard focus for the swatch buttons (they sit on tinted chips
+// where the UA default ring can wash out).
+.preset-swatch:focus-visible{outline:2px solid var(--hugm-chat-accent, t.$neon);outline-offset:2px}
+
+// The preview mirrors the timeline's var consumption exactly, with its OWN
+// visible fallbacks (a default-look chat) so it still previews something
+// meaningful before any theme is saved.
+.theme-preview{
+  display:flex;flex-direction:column;gap:6px;padding:12px;
+  border:1px dashed rgba(t.$neon, 0.35);border-radius:t.$radius-sm;
+  font-family:var(--hugm-chat-font-family, inherit);
+  background-color:var(--hugm-chat-bg, transparent);
+  background-image:var(--hugm-chat-bg-image, none);
+  background-size:var(--hugm-chat-bg-size, auto);
+}
+
+.preview-bubble{
+  max-width:80%;font-size:13px;display:flex;flex-direction:column;gap:2px;
+  padding:var(--hugm-chat-bubble-pad, 6px 10px);
+  border-radius:var(--hugm-chat-bubble-radius, 14px);
+}
+
+.preview-bubble.theirs{
+  align-self:flex-start;
+  background:var(--hugm-chat-bubble-theirs, #21262e);
+  color:var(--hugm-chat-bubble-theirs-text, #edeef2);
+}
+
+.preview-bubble.mine{
+  align-self:flex-end;
+  background:var(--hugm-chat-bubble-mine, #0f4a3f);
+  color:var(--hugm-chat-bubble-mine-text, #e6fff7);
+}
+
+.preview-sender{font-weight:600;font-size:12px;color:var(--hugm-chat-accent, inherit)}
+
+// ── Mesh devices ──
+.mesh-devices{display:flex;flex-direction:column;gap:8px}
+.mesh-devices h4{margin:0}
+.mesh-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.mesh-row{display:flex;flex-direction:column;gap:4px;font-size:13px}
+.mesh-id{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.mesh-label{font-weight:600}
+.mesh-node{font-size:12px;color:#888}
+// Revoked rows stay listed but visually flagged (label struck, red marker).
+.mesh-row.revoked .mesh-label{text-decoration:line-through;color:#888}
+.mesh-revoked{font-size:11px;color:#c00}
+.mesh-status{margin:0}
+.mesh-actions{display:flex;align-items:flex-end;gap:8px}
+.mesh-visibility{font-size:12px}
+.mesh-error{margin:0;font-size:12px;color:#c00}
+
+@media (max-width: t.$bp-md), (pointer: coarse) {
+  .mesh-actions select,
+  .mesh-actions button{min-height:44px}
+}

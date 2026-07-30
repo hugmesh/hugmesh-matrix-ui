@@ -1,0 +1,34 @@
+<section class="thread-panel" data-testid="thread-panel" aria-label="Thread">
+  <header><h3>Thread</h3>
+    <a [routerLink]="['/rooms', roomId()]"><span aria-hidden="true">←</span> Back to room</a></header>
+
+  <div *ngIf="root() as r" class="thread-root" data-testid="thread-root">
+    <strong>{{ r.senderDisplayName || r.sender }}</strong>
+    <span>{{ r.body }}</span>
+  </div>
+
+  <ul class="replies" aria-label="Thread replies" aria-live="polite">
+    <li *ngFor="let e of replies()" class="reply"
+        [attr.data-testid]="'thread-reply-' + e.eventId">
+      <strong>{{ e.senderDisplayName || e.sender }}:</strong> <span>{{ e.body }}</span>
+    </li>
+  </ul>
+
+  <hug-composer *ngIf="roomId() && rootId()"
+    class="thread-composer-host" data-testid="thread-composer"
+    [roomId]="roomId()!" [mode]="threadMode"
+    [threadRootId]="rootId()" [latestThreadEventId]="latestId()"
+    (sent)="reloadReplies()"></hug-composer>
+
+  <aside class="thread-list" aria-label="All threads in this room">
+    <h4 id="all-threads-heading">All threads</h4>
+    <ul aria-labelledby="all-threads-heading">
+      <li *ngFor="let t of threadRoots()"
+          [attr.data-testid]="'thread-list-item-' + t.eventId">
+        <a [routerLink]="['/rooms', roomId(), 'thread', t.eventId]">
+          {{ t.senderDisplayName || t.sender }}: {{ t.body }}
+        </a>
+      </li>
+    </ul>
+  </aside>
+</section>

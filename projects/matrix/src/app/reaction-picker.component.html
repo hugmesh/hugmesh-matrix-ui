@@ -1,0 +1,10 @@
+<div class="reaction-picker" data-testid="reaction-picker" role="menu" aria-label="Add a reaction">
+  <button *ngFor="let e of emojis; let i = index" type="button" class="emoji-btn"
+          role="menuitemcheckbox"
+          [attr.aria-checked]="isMine(e)"
+          [attr.aria-label]="label(e) + (isMine(e) ? ' (your reaction)' : '')"
+          [attr.tabindex]="activeIndex() === i ? 0 : -1"
+          [attr.data-testid]="'emoji-' + e"
+          (keydown)="onKeydown($event, i)"
+          (click)="pick(e)"><span aria-hidden="true">{{ e }}</span></button>
+</div>

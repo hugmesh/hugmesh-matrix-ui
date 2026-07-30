@@ -1,0 +1,8 @@
+/node_modules
+/dist
+/out-tsc
+/.angular
+/e2e/face-track/.build
+*.log
+.DS_Store
+.env

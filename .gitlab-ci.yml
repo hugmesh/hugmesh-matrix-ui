@@ -1,0 +1,100 @@
+# HugMesh CI — build + push this service's container image to the in-cluster
+# GitLab container registry. The GitHub repo is pull-mirrored into in-cluster
+# GitLab (mirror_trigger_builds=true), so this runs on push / mirror-sync on the
+# privileged x86 runner (shell executor with docker, matching the generator CI).
+# Images carry NO keys — KEYS material is supplied from the USB at first boot.
+#
+# This pipeline also pulls in the centralized OWASP pen-test stage from the
+# hugmesh-generator repo (the ONE source of truth for SCA + DAST), exposing
+# the hidden `.pentest-*` jobs that the `pentest:*` jobs below extend. The stage
+# is additive and non-blocking (allow_failure: true) so it never breaks builds.
+include:
+  - project: 'HugMesh/hugmesh-generator'
+    ref: main
+    file: '/tests/pentest/ci/pentest-stage.gitlab-ci.yml'
+
+stages: [build, e2e, pentest]
+
+build:image:
+  stage: build
+  tags: [hugmesh-x86, privileged]
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_COMMIT_TAG'
+  script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+    # Immutable tag = release tag or git SHA; plus a moving branch tag the deploy/
+    # kustomize can track for dev.
+    - export TAG="${CI_COMMIT_TAG:-$CI_COMMIT_SHORT_SHA}"
+    - docker build --pull -t "$CI_REGISTRY_IMAGE:$TAG" -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG" .
+    - docker push "$CI_REGISTRY_IMAGE:$TAG"
+    - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG"
+
+# -----------------------------------------------------------------------------
+# OWASP pen-test stage — wired from the centralized generator template above.
+# Both jobs are allow_failure: true (non-blocking, additive) and gated to the
+# default branch + merge requests, mirroring this repo's security posture.
+#   * pentest:sca  — OWASP Dependency-Check SCA over this repo (self-checkout).
+#   * pentest:dast — authenticated ZAP DAST baseline via the shared harness.
+# -----------------------------------------------------------------------------
+pentest:sca:
+  extends: .pentest-sca
+  allow_failure: true
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
+pentest:dast:
+  extends: .pentest-dast-baseline
+  allow_failure: true
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
+# pentest:load — the OPT-IN k6 load / DoS-resilience run from the same shared
+# harness (run-pentest.sh --load). OFF by default: the hidden .pentest-load job
+# gates on PENTEST_LOAD == "1" (a GitLab Schedule or a manual trigger), NEVER a
+# plain MR, so this adds zero cost to normal pipelines. Completes the platform
+# pen-test standard here (SCA + DAST + nuclei — the baseline DAST job already
+# runs the committed nuclei boundary templates via --nuclei — plus k6 load).
+pentest:load:
+  extends: .pentest-load
+
+# -----------------------------------------------------------------------------
+# Playwright + BDD (Gherkin) end-to-end suite. PURE TEST CODE under ./e2e — it
+# does NOT touch the karma unit build or any app code. The role-gated Matrix
+# moderation surfaces read their tier from `localStorage['snap.session']`, so
+# the USER / MOD / ADMIN / banned + cross-tenant matrix runs WITHOUT a live
+# homeserver or BFF: the cluster-dependent scenarios are `@cluster`-tagged
+# and filtered out by playwright.config.ts, leaving an offline-discoverable
+# suite. This job proves the suite COMPILES + DISCOVERS (bddgen + --list); it is
+# `allow_failure: true` (non-blocking, ships dark) and rules-restricted to MRs
+# and the default branch. No secrets — E2E_BASE_URL is read from a (masked) CI
+# variable only when a real run is wired against a deployed env.
+e2e:bdd:
+  stage: e2e
+  image: mcr.microsoft.com/playwright:v1.55.1-jammy
+  allow_failure: true
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - e2e/**/*
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      changes:
+        - e2e/**/*
+  variables:
+    # Offline proof has no cluster; a real run overrides this with a deployed
+    # Matrix-remote / host-shell URL via a masked CI variable.
+    E2E_BASE_URL: 'https://host.docker.internal:8080'
+  script:
+    - cd e2e
+    - npm ci || npm install
+    # Compile every .feature into a generated spec.
+    - npx bddgen
+    # Prove the offline suite discovers (cluster scenarios excluded by tag).
+    - npx playwright test --list
+  artifacts:
+    when: always
+    expire_in: 1 week
+    paths:
+      - e2e/.features-gen/

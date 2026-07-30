@@ -1,0 +1,7 @@
+# Playwright + playwright-bdd e2e — generated and installed artefacts.
+node_modules/
+.features-gen/
+test-results/
+playwright-report/
+results/
+*.log

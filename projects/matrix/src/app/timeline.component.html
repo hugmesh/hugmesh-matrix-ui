@@ -1,0 +1,123 @@
+<div class="timeline" data-testid="timeline">
+  <button *ngIf="canPaginate()" type="button" class="paginate"
+          data-testid="btn-paginate-back" aria-describedby="timeline-paginate-help"
+          (click)="paginateBack()">Load older messages</button>
+  <p *ngIf="canPaginate()" id="timeline-paginate-help" class="sr" data-testid="timeline-paginate-help">
+    Fetches earlier messages and adds them to the top of this timeline.
+  </p>
+
+  <!-- Shared describedby target for every message's action group: one concise
+       hint explains what the per-message buttons do (Delete redacts) so each
+       row's action group announces it without repeating copy on every event. -->
+  <p id="timeline-actions-help" class="sr" data-testid="timeline-actions-help">
+    React adds an emoji; Reply quotes this message; Thread starts a side conversation. On your own
+    messages, Edit changes the text and Delete removes it for everyone. Moderators can also Delete
+    another person's message.
+  </p>
+
+  <!-- Explicit DENIED state: the initial history fetch was rejected (a
+       non-member / signed-out deep link). Never conflated with an empty room. -->
+  <p *ngIf="loadDenied()" class="denied" data-testid="timeline-denied" role="status">
+    You can't view this room's history. Join the room (or ask for an invite) to see its messages.
+  </p>
+
+  <ul class="log" data-testid="matrix-log" aria-label="Message timeline" aria-live="polite">
+    <li *ngFor="let row of rows(); trackBy: trackRow"
+        class="event" [attr.data-testid]="'event-' + row.event.eventId"
+        [class.redacted]="row.event.redacted">
+      <div *ngIf="row.dayLabel" class="day-separator" data-testid="day-separator" role="separator"
+           [attr.aria-label]="'Messages from ' + row.dayLabel">{{ row.dayLabel }}</div>
+
+      <div class="event-body">
+        <span class="avatar" data-testid="event-avatar" aria-hidden="true"
+              [style.background-image]="avatarBg(row.event)"></span>
+        <!-- .mine drives the per-user theme's own-message bubble color
+             (var --hugm-chat-bubble-mine); with no theme set both fills are
+             transparent so the class is visually inert. -->
+        <div class="bubble" [class.mine]="isMine(row.event)">
+          <span class="sender" data-testid="event-sender">{{ senderName(row.event) }}</span>
+          <!-- "via LoRa mesh" provenance chip: rendered for @mesh-* senders and
+               for events carrying a valid com.hugmesh.mesh fragment. The
+               title carries RSSI/SNR when present + the node-ids-are-not-
+               authenticated caution; the chip text itself is announced. -->
+          <span *ngIf="meshBadge(row.event) as mb" class="mesh-badge"
+                [attr.data-testid]="'mesh-badge-' + row.event.eventId"
+                [attr.title]="meshTitle(row.event)">{{ mb }}</span>
+
+          <span *ngIf="replyTo(row.event) as rid" class="reply-quote">↪ in reply to {{ rid }}</span>
+
+          <span *ngIf="row.event.redacted" class="redacted-marker" data-testid="redacted-marker">(message deleted)</span>
+          <!-- A sticker's body is its accessible name (the img alt below) — no
+               duplicate text row is rendered for it. -->
+          <span *ngIf="!row.event.redacted && !isSticker(row.event)" class="text">{{ displayBody(row.event) }}</span>
+          <span *ngIf="row.event.edited && !row.event.redacted" class="edited-marker" data-testid="edited-marker">(edited)</span>
+
+          <!-- MSC2545 m.sticker: the content.url mxc rendered as an image, with
+               a sticker-<eventId> testid so the e2e can pin the render-half. -->
+          <img *ngIf="isSticker(row.event) && !row.event.redacted && imageUrls[row.event.eventId] as ssrc"
+               class="media sticker" [attr.data-testid]="'sticker-' + row.event.eventId"
+               [src]="ssrc" [alt]="stickerAlt(row.event)" />
+
+          <img *ngIf="row.event.msgtype === 'm.image' && imageUrls[row.event.eventId] as src" class="media" [src]="src"
+               [alt]="(row.event.body || 'Image') + ' from ' + senderAriaName(row.event)" />
+
+          <a *ngIf="row.event.msgtype === 'm.file' && fileUrls[row.event.eventId] as fsrc"
+             class="file" [href]="fsrc" target="_blank" rel="noopener"
+             [attr.aria-label]="'Download file ' + row.event.body">{{ row.event.body }}</a>
+
+          <a *ngIf="row.event.threadReplyCount"
+             [routerLink]="['/rooms', roomId, 'thread', row.event.eventId]"
+             class="thread-summary" [attr.data-testid]="'thread-summary-' + row.event.eventId">
+            {{ row.event.threadReplyCount }} replies in thread
+          </a>
+
+          <div class="reactions" *ngIf="row.event.reactions?.length">
+            <button *ngFor="let rx of row.event.reactions" type="button" class="pill"
+                    [class.mine]="!!rx.myEventId"
+                    [attr.aria-pressed]="!!rx.myEventId"
+                    [attr.aria-label]="rx.key + ' reaction, ' + rx.count + (rx.count === 1 ? ' person' : ' people')"
+                    [attr.data-testid]="'reaction-pill-' + rx.key"
+                    (click)="toggleReaction(row.event, rx)">{{ rx.key }} {{ rx.count }}</button>
+          </div>
+
+          <!-- "Seen by" read receipts: the members (excluding me) whose LATEST
+               read receipt anchors on THIS event. Each chip is an accessible
+               image labelled "Read by <name>"; the initial is a fallback when
+               the member has no avatar. -->
+          <div class="read-receipts" *ngIf="readByEvent()[row.event.eventId] as seen"
+               [attr.data-testid]="'read-receipts-' + row.event.eventId">
+            <span *ngFor="let c of seen; trackBy: trackChip" class="receipt" role="img"
+                  [attr.data-testid]="'read-receipt-' + c.userId"
+                  [attr.aria-label]="'Read by ' + c.ariaName"
+                  [attr.title]="c.name"
+                  [style.background-image]="c.avatarBg">{{ c.avatarBg ? '' : c.initial }}</span>
+          </div>
+
+          <div class="actions" role="group"
+               aria-describedby="timeline-actions-help"
+               [attr.aria-label]="'Actions for message from ' + senderAriaName(row.event)">
+            <button type="button" [attr.data-testid]="'btn-react-' + row.event.eventId"
+                    [attr.aria-expanded]="pickerFor() === row.event.eventId"
+                    (click)="openPicker(row.event.eventId)">React</button>
+            <button type="button" [attr.data-testid]="'btn-reply-' + row.event.eventId" (click)="reply.emit(row.event)">Reply</button>
+            <button type="button" [attr.data-testid]="'btn-thread-' + row.event.eventId" (click)="thread.emit(row.event)">Thread</button>
+            <button *ngIf="isMine(row.event)" type="button" [attr.data-testid]="'btn-edit-' + row.event.eventId" (click)="edit.emit(row.event)">Edit</button>
+            <!-- Delete (redact) is OWNERSHIP + ROLE gated: the author always, a
+                 MOD/ADMIN tier on anyone's message (canRedact). The homeserver
+                 still enforces the redact power level — this UI gate only decides
+                 who is OFFERED the control. -->
+            <button *ngIf="canRedact(row.event)" type="button" [attr.data-testid]="'btn-delete-' + row.event.eventId"
+                    [attr.aria-label]="isMine(row.event) ? null : 'Delete (moderator) message from ' + senderAriaName(row.event)"
+                    (click)="del(row.event)">Delete</button>
+          </div>
+
+          <hug-reaction-picker *ngIf="pickerFor() === row.event.eventId"
+            [roomId]="roomId" [targetEventId]="row.event.eventId"
+            [myReactions]="myReactionMap(row.event)"
+            (reacted)="onReacted(row.event.eventId)"
+            (dismissed)="dismissPicker(row.event.eventId)"></hug-reaction-picker>
+        </div>
+      </div>
+    </li>
+  </ul>
+</div>

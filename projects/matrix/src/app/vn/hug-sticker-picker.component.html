@@ -1,0 +1,39 @@
+<!-- The sticker picker is a transient overlay. The grid is a roving-tabindex
+     role="menu": one Tab stop in, Arrow/Home/End move the active tile, Enter/Space
+     send, Escape dismisses (the host then restores focus to the toggle). Each tile
+     renders its sticker via <img src="blob:…"> (authenticated object URL) — NEVER
+     innerHTML/bypassSecurityTrust — the same XSS boundary B2's panel uses. -->
+<div class="sticker-picker" data-testid="sticker-picker" role="menu" aria-label="Send a sticker from your pack">
+  <p *ngIf="loading()" class="sp-loading" data-testid="sticker-loading" role="status" aria-live="polite">
+    Loading your stickers…
+  </p>
+
+  <ng-container *ngIf="!loading()">
+    <div *ngIf="tiles().length > 0; else emptyState" class="sp-grid">
+      <button *ngFor="let t of tiles(); let i = index" type="button" class="sticker-btn"
+              role="menuitem"
+              [attr.aria-label]="tileLabel(t)"
+              [attr.tabindex]="activeIndex() === i ? 0 : -1"
+              [attr.data-testid]="'sticker-' + t.shortcode"
+              (keydown)="onKeydown($event, i)"
+              (click)="send(t)">
+        <img class="sticker-img" [src]="t.src" [attr.alt]="t.label"
+             width="64" height="64" loading="lazy" decoding="async" draggable="false" />
+      </button>
+    </div>
+
+    <ng-template #emptyState>
+      <!-- tabindex=0 so a keyboard user who opened an empty picker can still
+           Escape out of it (onEmptyKeydown) rather than being stranded. -->
+      <p class="sp-empty" data-testid="sticker-empty" tabindex="0" role="note"
+         (keydown)="onEmptyKeydown($event)">
+        You have no expression stickers yet. Create a VN character and register its
+        expressions to send them here.
+      </p>
+    </ng-template>
+  </ng-container>
+
+  <p *ngIf="status()" class="sp-status" data-testid="sticker-status" role="status" aria-live="polite">
+    {{ status() }}
+  </p>
+</div>

@@ -1,0 +1,47 @@
+<section class="member-list" data-testid="member-list" aria-label="Room members">
+  <header>
+    <h3>Members ({{ members().length }})</h3>
+    <a [routerLink]="['/rooms', roomId()]"><span aria-hidden="true">←</span> Back</a>
+  </header>
+
+  <div class="invite-row">
+    <label class="sr" for="member-invite">Invite a user by id</label>
+    <input id="member-invite" data-testid="input-invite-user" [(ngModel)]="inviteUser"
+           placeholder="@user:server" aria-describedby="member-invite-help"
+           (keyup.enter)="doInvite()" />
+    <button type="button" data-testid="btn-invite"
+            aria-describedby="member-invite-help" (click)="doInvite()">Invite</button>
+  </div>
+  <p id="member-invite-help" class="field-help" data-testid="member-invite-help">
+    Enter a full Matrix id like <code>&#64;user:server</code> to invite someone to this room.
+  </p>
+
+  <!-- ANNOUNCED invite/kick outcome: a homeserver rejection (403 power level,
+       invalid target) surfaces here — never a silent no-op. -->
+  <p *ngIf="status()" class="status" role="status" aria-live="polite"
+     data-testid="member-list-status">{{ status() }}</p>
+
+  <!-- Shared describedby target for the per-row Kick buttons: one hint explains
+       the action so every Kick button announces it without duplicating copy. -->
+  <p id="member-kick-help" class="field-help" data-testid="member-kick-help">
+    Kick removes a member from this room. They can rejoin if the room is public or they are
+    invited again. Requires sufficient power level.
+  </p>
+
+  <ul>
+    <li *ngFor="let m of members()" class="member" [attr.data-testid]="'member-' + m.userId">
+      <span class="dot" [attr.data-testid]="'member-presence-' + m.userId"
+            [class.online]="m.presence === 'online'"
+            [class.unavailable]="m.presence === 'unavailable'"
+            [attr.aria-label]="'Presence: ' + (m.presence || 'offline')"
+            role="img"></span>
+      <span class="avatar" aria-hidden="true" [style.background-image]="bg(m)"></span>
+      <span class="name">{{ m.displayName || m.userId }}</span>
+      <span class="power" [attr.data-testid]="'member-power-' + m.userId">{{ powerLabel(m.powerLevel) }}</span>
+      <button type="button" class="kick" [attr.data-testid]="'btn-kick-' + m.userId"
+              [attr.aria-label]="'Kick ' + ariaName(m)"
+              aria-describedby="member-kick-help" (click)="doKick(m)">Kick</button>
+      <hug-role-actions [target]="m.userId" [isSelf]="m.userId === me()"></hug-role-actions>
+    </li>
+  </ul>
+</section>

@@ -1,0 +1,135 @@
+<nav class="room-list" data-testid="room-list" aria-label="Rooms and people">
+  <div class="toolbar">
+    <button type="button" data-testid="btn-create-room"
+            [attr.aria-expanded]="showCreate()" aria-label="Create a new room"
+            aria-describedby="rl-create-help"
+            (click)="showCreate.set(!showCreate())">+ Room</button>
+    <button type="button" data-testid="btn-start-dm"
+            [attr.aria-expanded]="showDm()" aria-label="Start a direct message"
+            aria-describedby="rl-dm-help"
+            (click)="showDm.set(!showDm())">+ DM</button>
+  </div>
+  <p id="rl-create-help" class="section-help" data-testid="rl-create-help">
+    Opens a form to create a new group room you own. Use a direct message instead to talk one-to-one.
+  </p>
+  <p id="rl-dm-help" class="section-help" data-testid="rl-dm-help">
+    Starts a private one-to-one chat with another person by their Matrix id.
+    <span *ngIf="domainLocked()" data-testid="rl-dm-lock-note">
+      Your account is domain-locked: you can only message people on your own server —
+      cross-domain targets are unavailable.
+    </span>
+  </p>
+
+  <div class="join">
+    <label class="sr" for="join-alias">Join a room by alias or id</label>
+    <input id="join-alias" data-testid="input-join-alias" [(ngModel)]="joinAlias"
+           placeholder="#room:server or !id"
+           aria-describedby="rl-join-help"
+           (keyup.enter)="joinByAlias()" />
+    <button type="button" data-testid="btn-join-alias"
+            aria-describedby="rl-join-help" (click)="joinByAlias()">Join</button>
+  </div>
+  <p id="rl-join-help" class="field-help" data-testid="rl-join-help">
+    Enter a public room alias such as <code>#room:server</code> or a room id starting with
+    <code>!</code>, then press Enter or Join to add it to your list.
+    <span *ngIf="domainLocked()" data-testid="rl-join-lock-note">
+      Your account is domain-locked: only rooms on your own server can be joined —
+      rooms on other servers are unavailable (local rooms are unaffected).
+    </span>
+  </p>
+  <p *ngIf="joinError()" class="error" role="alert" aria-live="assertive" data-testid="rl-join-error">
+    {{ joinError() }}
+  </p>
+
+  <form *ngIf="showCreate()" class="dialog" data-testid="dialog-create-room"
+        aria-label="Create room" (submit)="create($event)">
+    <label class="sr" for="create-name">Room name</label>
+    <input id="create-name" [(ngModel)]="newName" name="name" placeholder="Room name"
+           required [attr.aria-invalid]="submittedCreate() && !newName.trim()" />
+    <label class="sr" for="create-topic">Topic</label>
+    <input id="create-topic" [(ngModel)]="newTopic" name="topic" placeholder="Topic" />
+    <label class="sr" for="create-alias">Alias (optional)</label>
+    <input id="create-alias" [(ngModel)]="newAlias" name="alias" placeholder="Alias (optional)" />
+    <label class="sr" for="create-preset">Room privacy</label>
+    <select id="create-preset" [(ngModel)]="newPreset" name="preset"
+            aria-describedby="create-preset-help">
+      <option value="private_chat">Private</option>
+      <option value="public_chat">Public</option>
+      <option value="trusted_private_chat">Trusted private</option>
+    </select>
+    <p id="create-preset-help" class="field-help" data-testid="create-preset-help">
+      Private: invite-only. Public: anyone can find and join. Trusted private: invited members
+      join with the same permissions as you.
+    </p>
+    <button type="submit">Create</button>
+    <p *ngIf="submittedCreate() && !newName.trim()" class="error"
+       role="alert" aria-live="assertive" data-testid="create-room-error">
+      Room name is required.
+    </p>
+  </form>
+
+  <form *ngIf="showDm()" class="dialog" aria-label="Start direct message" (submit)="startDm($event)">
+    <label class="sr" for="dm-user">User to message</label>
+    <input id="dm-user" [(ngModel)]="dmUser" name="dmUser" placeholder="@user:server"
+           aria-describedby="rl-dm-help" />
+    <button type="submit">Start DM</button>
+    <p *ngIf="dmError()" class="error" role="alert" aria-live="assertive" data-testid="rl-dm-error">
+      {{ dmError() }}
+    </p>
+  </form>
+
+  <!-- Pending invites (the INVITEE's side of an invite): each row shows the
+       invited room + who invited, with explicit Accept / Decline. Hidden
+       entirely when there are none. -->
+  <ng-container *ngIf="invites().length">
+    <h4 id="invites-heading">Invites</h4>
+    <ul aria-labelledby="invites-heading" data-testid="invite-list">
+      <li *ngFor="let inv of invites(); trackBy: trackInvite" class="invite"
+          [attr.data-testid]="'invite-item-' + inv.roomId">
+        <span class="avatar" aria-hidden="true" [style.background-image]="inviteBg(inv)"></span>
+        <span class="name">{{ inv.name }}</span>
+        <span *ngIf="inv.inviter" class="inviter" [attr.data-testid]="'invite-inviter-' + inv.roomId">
+          invited by {{ inv.inviter }}
+        </span>
+        <button type="button" [attr.data-testid]="'btn-accept-invite-' + inv.roomId"
+                [attr.aria-label]="'Accept the invite to ' + inv.name"
+                (click)="acceptInvite(inv)">Accept</button>
+        <button type="button" [attr.data-testid]="'btn-decline-invite-' + inv.roomId"
+                [attr.aria-label]="'Decline the invite to ' + inv.name"
+                (click)="declineInvite(inv)">Decline</button>
+      </li>
+    </ul>
+    <p *ngIf="inviteError()" class="error" role="alert" aria-live="assertive"
+       data-testid="rl-invite-error">{{ inviteError() }}</p>
+  </ng-container>
+
+  <h4 id="people-heading">People</h4>
+  <ul aria-labelledby="people-heading">
+    <li *ngFor="let r of people()">
+      <a [routerLink]="['/rooms', r.roomId]" class="room"
+         [attr.data-testid]="'room-item-' + r.roomId" (click)="select(r)"
+         [class.active]="r.roomId === selectedRoomId"
+         [attr.aria-current]="r.roomId === selectedRoomId ? 'page' : null">
+        <span class="avatar" aria-hidden="true" [style.background-image]="bg(r)"></span>
+        <span class="name">{{ r.name }}</span>
+        <span *ngIf="r.unreadCount" class="badge" [attr.data-testid]="'room-unread-' + r.roomId"
+              [attr.aria-label]="r.unreadCount + ' unread messages'">{{ r.unreadCount }}</span>
+      </a>
+    </li>
+  </ul>
+
+  <h4 id="rooms-heading">Rooms</h4>
+  <ul aria-labelledby="rooms-heading">
+    <li *ngFor="let r of groups()">
+      <a [routerLink]="['/rooms', r.roomId]" class="room"
+         [attr.data-testid]="'room-item-' + r.roomId" (click)="select(r)"
+         [class.active]="r.roomId === selectedRoomId"
+         [attr.aria-current]="r.roomId === selectedRoomId ? 'page' : null">
+        <span class="avatar" aria-hidden="true" [style.background-image]="bg(r)"></span>
+        <span class="name">{{ r.name }}</span>
+        <span *ngIf="r.unreadCount" class="badge" [attr.data-testid]="'room-unread-' + r.roomId"
+              [attr.aria-label]="r.unreadCount + ' unread messages'">{{ r.unreadCount }}</span>
+      </a>
+    </li>
+  </ul>
+</nav>

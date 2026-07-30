@@ -1,0 +1,187 @@
+<section class="room-settings" data-testid="room-settings" aria-label="Room settings">
+  <header>
+    <h3>Room settings</h3>
+    <a [routerLink]="['/rooms', roomId()]"><span aria-hidden="true">←</span> Back</a>
+  </header>
+
+  <label for="rs-name">Name
+    <input id="rs-name" data-testid="input-room-name" [(ngModel)]="name"
+           aria-describedby="rs-name-help" />
+  </label>
+  <p id="rs-name-help" class="field-help" data-testid="rs-name-help">
+    The room's display name, shown to every member in their room list.
+  </p>
+  <label for="rs-topic">Topic
+    <input id="rs-topic" data-testid="input-room-topic" [(ngModel)]="topic"
+           aria-describedby="rs-topic-help" />
+  </label>
+  <p id="rs-topic-help" class="field-help" data-testid="rs-topic-help">
+    A short description of what the room is for, shown in the room header.
+  </p>
+  <label for="rs-avatar">Avatar
+    <input id="rs-avatar" type="file" data-testid="input-room-avatar" accept="image/*"
+           aria-describedby="rs-avatar-help" (change)="onAvatar($event)" />
+  </label>
+  <p id="rs-avatar-help" class="field-help" data-testid="rs-avatar-help">
+    Pick an image to represent the room. It is uploaded immediately, but only applied when you Save.
+  </p>
+  <button type="button" data-testid="btn-save-room"
+          aria-describedby="rs-save-help" (click)="save()" [disabled]="busy()">Save</button>
+  <p id="rs-save-help" class="field-help" data-testid="rs-save-help">
+    Applies the name, topic and avatar changes above for everyone in the room.
+  </p>
+
+  <hr />
+  <!-- Invite is a cross-domain / FEDERATION target when the invitee lives on a
+       remote homeserver. A DOMAIN-LOCKED caller (matrix_domainlocked) is forced
+       LOCAL-ONLY: remote invites are blocked (disabled + WHY-helptext) while
+       same-domain invites stay usable. aria-describedby keeps it from ever being
+       a bare disabled control. -->
+  <p *ngIf="domainLocked()" class="domain-lock-note" data-testid="invite-domain-lock-note"
+     role="status" aria-live="polite">
+    <span aria-hidden="true">🏠</span> Local-only: your account is domain-locked, so you can only invite users on your own domain.
+  </p>
+  <label for="rs-invite">Invite user
+    <input id="rs-invite" data-testid="input-invite" [(ngModel)]="inviteUser" placeholder="@user:server"
+           [attr.aria-describedby]="domainLocked() ? 'rs-invite-help' : null" />
+  </label>
+  <button type="button" data-testid="btn-room-invite"
+          [disabled]="inviteBlocked()"
+          [attr.aria-describedby]="domainLocked() ? 'rs-invite-help' : null"
+          (click)="doInvite()">Invite</button>
+  <p *ngIf="domainLocked()" id="rs-invite-help" class="field-help" data-testid="invite-help">{{ inviteHelp }}</p>
+
+  <hr />
+  <h4 id="rs-powers-heading">Power levels</h4>
+  <ul class="powers" aria-labelledby="rs-powers-heading">
+    <li *ngFor="let u of powerUsers()">{{ u.userId }}: {{ u.level }}</li>
+  </ul>
+
+  <hr />
+  <!-- Mesh bridge (LoRa): per-room systems.hugmesh.mesh.bridge state. The
+       controls are POWER-LEVEL gated (canEditMeshBridge): a below-threshold
+       member sees them greyed-out with WHY-helptext (aria-describedby keeps
+       them from ever being bare disabled controls), mirroring the domain-lock
+       invite pattern above. The homeserver still enforces the level on save. -->
+  <section class="mesh-bridge" data-testid="mesh-bridge" aria-labelledby="rs-mesh-heading">
+    <h4 id="rs-mesh-heading">Mesh bridge (LoRa)</h4>
+    <p id="rs-mesh-help" class="field-help" data-testid="rs-mesh-help">
+      Bridges this room to a Meshtastic LoRa-mesh channel. Messages flow both ways: room messages go
+      out over the radio, and mesh senders appear here as &#64;mesh-* users. Caution: LoRa node ids
+      are not cryptographically authenticated, so a radio can claim any node id.
+    </p>
+    <p *ngIf="!canEditMeshBridge()" id="rs-mesh-locked-help" class="field-help" data-testid="mesh-locked-help">{{ meshHelp }}</p>
+    <label for="rs-mesh-enabled" class="check">
+      <input id="rs-mesh-enabled" type="checkbox" data-testid="input-mesh-enabled" [(ngModel)]="meshEnabled"
+             [disabled]="!canEditMeshBridge()"
+             [attr.aria-describedby]="canEditMeshBridge() ? 'rs-mesh-help' : 'rs-mesh-help rs-mesh-locked-help'" />
+      Bridge this room to the LoRa mesh
+    </label>
+    <label for="rs-mesh-device">Bridge device id
+      <input id="rs-mesh-device" data-testid="input-mesh-device" [(ngModel)]="meshDevice" placeholder="default"
+             [disabled]="!canEditMeshBridge()"
+             [attr.aria-describedby]="canEditMeshBridge() ? 'rs-mesh-device-help' : 'rs-mesh-device-help rs-mesh-locked-help'" />
+    </label>
+    <p id="rs-mesh-device-help" class="field-help" data-testid="rs-mesh-device-help">
+      Which bridge radio serves this room. Leave as "default" unless your community runs more than one.
+    </p>
+    <label for="rs-mesh-channel">Mesh channel (0–7)
+      <input id="rs-mesh-channel" type="number" min="0" max="7" data-testid="input-mesh-channel"
+             [(ngModel)]="meshChannel" [disabled]="!canEditMeshBridge()"
+             [attr.aria-describedby]="canEditMeshBridge() ? 'rs-mesh-channel-help' : 'rs-mesh-channel-help rs-mesh-locked-help'" />
+    </label>
+    <p id="rs-mesh-channel-help" class="field-help" data-testid="rs-mesh-channel-help">
+      The Meshtastic channel slot (0–7) this room bridges to.
+    </p>
+    <button type="button" data-testid="btn-save-mesh"
+            [disabled]="busy() || !canEditMeshBridge()"
+            [attr.aria-describedby]="canEditMeshBridge() ? 'rs-mesh-save-help' : 'rs-mesh-save-help rs-mesh-locked-help'"
+            (click)="saveMeshBridge()">Save mesh bridge</button>
+    <p id="rs-mesh-save-help" class="field-help" data-testid="rs-mesh-save-help">
+      Saves the mesh bridge setting for everyone in the room; enabling also invites the bridge bot.
+    </p>
+  </section>
+
+  <hr />
+  <!-- 3D chat room (Shadows of the Net): per-room systems.hugmesh.chat3d
+       state. Same POWER-LEVEL gating pattern as the mesh bridge above
+       (canEditChat3d, greyed-with-WHY-helptext, homeserver still enforces on
+       save). Enabling ALSO writes power-level overrides so ordinary members
+       can publish avatars / place media. -->
+  <section class="chat3d" data-testid="chat3d-settings" aria-labelledby="rs-c3d-heading">
+    <h4 id="rs-c3d-heading">3D chat room (Shadows of the Net)</h4>
+    <p id="rs-c3d-help" class="field-help" data-testid="rs-c3d-help">
+      Opens a shared 3D chamber for this room: members join as their 3D characters, sit around the
+      table, and can put channel media on its surfaces. Works in the browser, with optional VR
+      headsets (WebXR).
+    </p>
+    <p *ngIf="!canEditChat3d()" id="rs-c3d-locked-help" class="field-help" data-testid="chat3d-locked-help">{{ chat3dHelp }}</p>
+    <label for="rs-c3d-enabled" class="check">
+      <input id="rs-c3d-enabled" type="checkbox" data-testid="input-c3d-enabled" [(ngModel)]="chat3dEnabled"
+             [disabled]="!canEditChat3d()"
+             [attr.aria-describedby]="canEditChat3d() ? 'rs-c3d-help' : 'rs-c3d-help rs-c3d-locked-help'" />
+      Enable the 3D room for this channel
+    </label>
+    <label for="rs-c3d-style">Room style
+      <select id="rs-c3d-style" data-testid="input-c3d-style" [(ngModel)]="chat3dStyle"
+              [disabled]="!canEditChat3d()"
+              [attr.aria-describedby]="canEditChat3d() ? 'rs-c3d-style-help' : 'rs-c3d-style-help rs-c3d-locked-help'">
+        <option value="noir">Noir (cyber chamber)</option>
+        <option value="default">Default</option>
+      </select>
+    </label>
+    <p id="rs-c3d-style-help" class="field-help" data-testid="rs-c3d-style-help">
+      The chamber's look. Noir is the moody cyberpunk default.
+    </p>
+    <label for="rs-c3d-max">Max participants ({{ chat3dMinSeats }}–{{ chat3dMaxSeats }})
+      <input id="rs-c3d-max" type="number" [min]="chat3dMinSeats" [max]="chat3dMaxSeats"
+             data-testid="input-c3d-max" [(ngModel)]="chat3dMaxParticipants"
+             [disabled]="!canEditChat3d()"
+             [attr.aria-describedby]="canEditChat3d() ? 'rs-c3d-max-help' : 'rs-c3d-max-help rs-c3d-locked-help'" />
+    </label>
+    <p id="rs-c3d-max-help" class="field-help" data-testid="rs-c3d-max-help">
+      How many members can be in the 3D room at once (the chamber seats 16; voice works best at 8 or
+      fewer).
+    </p>
+    <label for="rs-c3d-media" class="check">
+      <input id="rs-c3d-media" type="checkbox" data-testid="input-c3d-media" [(ngModel)]="chat3dAllowMedia"
+             [disabled]="!canEditChat3d()"
+             [attr.aria-describedby]="canEditChat3d() ? 'rs-c3d-media-help' : 'rs-c3d-media-help rs-c3d-locked-help'" />
+      Allow members to place channel media on the room's surfaces
+    </label>
+    <p id="rs-c3d-media-help" class="field-help" data-testid="rs-c3d-media-help">
+      When off, the table and screens stay empty — nobody can pin images or files into the 3D room.
+    </p>
+    <label for="rs-c3d-stage" class="check">
+      <input id="rs-c3d-stage" type="checkbox" data-testid="input-c3d-stage" [(ngModel)]="chat3dStageModOnly"
+             [disabled]="!canEditChat3d()"
+             [attr.aria-describedby]="canEditChat3d() ? 'rs-c3d-stage-help' : 'rs-c3d-stage-help rs-c3d-locked-help'" />
+      Stage is moderator-only
+    </label>
+    <p id="rs-c3d-stage-help" class="field-help" data-testid="rs-c3d-stage-help">
+      When on, only moderators can place channel media in the 3D room at all — saving raises the
+      room's required power level for the 3D scene to 50, so ordinary members cannot put anything
+      on the stage, the tables or the screens. Turn it off to let every member place media on the
+      tables and screens (the stage then opens to everyone too).
+    </p>
+    <button type="button" data-testid="btn-save-chat3d"
+            [disabled]="busy() || !canEditChat3d()"
+            [attr.aria-describedby]="canEditChat3d() ? 'rs-c3d-save-help' : 'rs-c3d-save-help rs-c3d-locked-help'"
+            (click)="saveChat3d()">Save 3D chat room</button>
+    <p id="rs-c3d-save-help" class="field-help" data-testid="rs-c3d-save-help">
+      Saves the 3D room setting for everyone; enabling also adjusts the room's power levels so
+      members can publish their own avatars, and — when "Stage is moderator-only" is off — place
+      channel media on the room's surfaces.
+    </p>
+  </section>
+
+  <hr />
+  <button type="button" class="leave" data-testid="btn-leave-room"
+          aria-describedby="rs-leave-help" (click)="leave()">Leave room</button>
+  <p id="rs-leave-help" class="field-help" data-testid="rs-leave-help">
+    Removes you from this room and returns you to your room list. You can rejoin later if the room
+    is public or you are invited again.
+  </p>
+
+  <p *ngIf="status()" class="status" role="status" aria-live="polite" data-testid="room-settings-status">{{ status() }}</p>
+</section>

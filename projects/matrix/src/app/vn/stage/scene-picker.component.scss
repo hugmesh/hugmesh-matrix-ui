@@ -1,0 +1,161 @@
+@use '../../../styles/tokens' as t;
+@use '../../../styles/mixins' as m;
+
+.scene-picker {
+  @include m.card-surface;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  padding: 0.9rem;
+  color: var(--hug-text);
+  font-family: t.$font-sans;
+}
+
+.picker-heading {
+  margin: 0 0 0.4rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--hug-text-muted);
+}
+
+// Scene thumbnails: a responsive radio grid; the checked tile gets the ring.
+.scene-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
+  gap: 0.5rem;
+}
+.scene-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.35rem;
+  background: rgba(t.$surface, 0.6);
+  border: 1px solid rgba(t.$neon, t.$opacity-border);
+  border-radius: t.$radius-sm;
+  color: var(--hug-text);
+  cursor: pointer;
+
+  &.selected {
+    border-color: t.$neon;
+    @include m.neon-glow;
+  }
+}
+.scene-thumb {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: t.$radius-sm;
+  display: block;
+}
+.scene-thumb-none {
+  background: linear-gradient(180deg, var(--hug-bg-1) 0%, var(--hug-bg-0) 100%);
+}
+.scene-name {
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// Prop palette tiles.
+.prop-palette {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr));
+  gap: 0.5rem;
+}
+.prop-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.35rem;
+  background: rgba(t.$surface, 0.6);
+  border: 1px solid rgba(t.$neon, t.$opacity-border);
+  border-radius: t.$radius-sm;
+  color: var(--hug-text);
+  cursor: pointer;
+}
+.prop-thumb {
+  width: 3rem;
+  height: 3rem;
+  object-fit: contain;
+  display: block;
+
+  &.small {
+    width: 2rem;
+    height: 2rem;
+  }
+}
+.prop-name {
+  font-size: 0.75rem;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// Placed-prop rows: name + Move (keyboard) + Remove controls.
+.placed-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.placed-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid rgba(t.$neon, t.$opacity-border);
+  border-radius: t.$radius-sm;
+  background: rgba(t.$surface, 0.4);
+}
+.placed-name {
+  flex: 1 1 auto;
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.move-btn,
+.remove-btn {
+  flex: none;
+  // TOUCH TARGET: 2.75rem = 44px, the WCAG/HIG minimum comfortable touch size
+  // (these are the picker's smallest controls and must stay tappable on phones).
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  border-radius: t.$radius-sm;
+  border: 1px solid rgba(t.$neon, t.$opacity-border);
+  background: rgba(t.$mid, 0.5);
+  color: var(--hug-text);
+  cursor: pointer;
+}
+.remove-btn {
+  color: var(--hug-error);
+}
+
+// Announced placed-prop cap notice (see MAX_PROPS in vn-scene-state.service).
+.prop-cap-note {
+  margin: 0.4rem 0 0;
+  font-size: 0.8rem;
+  color: var(--hug-text-muted);
+}
+
+// Visible keyboard focus on the picker's composite controls — the tiles sit on
+// dark card surfaces where the UA default ring can be hard to see.
+.scene-tile:focus-visible,
+.prop-tile:focus-visible,
+.move-btn:focus-visible,
+.remove-btn:focus-visible {
+  outline: 2px solid t.$neon;
+  outline-offset: 2px;
+}
+
+// Disabled Add tiles (at the prop cap) read as unavailable without vanishing.
+.prop-tile:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

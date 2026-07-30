@@ -1,0 +1,204 @@
+@use 'sass:map';
+@use 'tokens' as t;
+
+// Per-user chat theming (ChatThemeService).
+//
+// The service stamps `data-matrix-theme|bubbles|font|density|chatbg`
+// attributes onto the REMOTE'S ROOT ELEMENTS (the routed shell components'
+// hosts — never <body>, so nothing leaks to the federation host or other
+// remotes). The rules below map those attributes to `--hugm-chat-*` custom
+// properties, which INHERIT down into the timeline/composer children where
+// the bubbles consume them via `var(--hugm-chat-*, fallback)` — the fallbacks
+// reproduce the stock look byte-for-byte, so with no attributes set nothing
+// changes.
+//
+// This partial is included by the shell components' own stylesheets through
+// `chat-theme-host-rules` (`:host(...)`-scoped). It deliberately does NOT go
+// through styles.scss: the remote's global stylesheet is not shipped when
+// federated, component styles always are.
+//
+// User color overrides (accent / bubbleMine / bubbleTheirs) are applied by the
+// service as INLINE custom properties on the same roots — inline style wins
+// over these attribute rules, giving: preset base < user color tweaks.
+
+// ── Preset palettes (the 5 presets as SCSS maps) ────────────────────────────
+// The three user-tweakable colors (accent / bubble-mine / bubble-theirs) are
+// mirrored in CHAT_THEME_PRESETS in theme/chat-theme.service.ts — keep in sync.
+// CONTRAST CONTRACT: every accent must hold WCAG AA 4.5:1 as text against BOTH
+// bubble fills and the bg (it renders 13px sender names on all three) — see
+// the verified ratios beside CHAT_THEME_PRESETS in chat-theme.service.ts.
+$presets: (
+  'element-dark': (
+    accent: #12cf99,
+    bg: #15191e,
+    surface: #1d232a,
+    border: rgba(#12cf99, 0.35),
+    bubble-mine: #0f4a3f,
+    bubble-mine-text: #e6fff7,
+    bubble-theirs: #21262e,
+    bubble-theirs-text: #edeef2,
+  ),
+  'pastel': (
+    accent: #6a3fbb,
+    bg: #fdf6fa,
+    surface: #f7ecf4,
+    border: rgba(t.$pastel-lavender, 0.8),
+    bubble-mine: t.$pastel-rose,
+    bubble-mine-text: #47243a,
+    bubble-theirs: t.$pastel-sky,
+    bubble-theirs-text: #16324f,
+  ),
+  'neon': (
+    accent: t.$neon,
+    bg: t.$black,
+    surface: t.$charcoal,
+    border: rgba(t.$neon, 0.45),
+    bubble-mine: #332b00,
+    bubble-mine-text: t.$neon-bright,
+    bubble-theirs: t.$surface,
+    bubble-theirs-text: t.$offwhite,
+  ),
+  'paper': (
+    accent: #6f5629,
+    bg: #f8f4ea,
+    surface: #efe8d8,
+    border: rgba(#6f5629, 0.4),
+    bubble-mine: #e7dcc0,
+    bubble-mine-text: #3c3222,
+    bubble-theirs: #fffdf7,
+    bubble-theirs-text: #34302a,
+  ),
+  'midnight-vn': (
+    accent: #b388ff,
+    bg: #0a0a16,
+    surface: #12122a,
+    border: rgba(#b388ff, 0.4),
+    bubble-mine: #2b1e4d,
+    bubble-mine-text: #ece2ff,
+    bubble-theirs: #191932,
+    bubble-theirs-text: #d9ddf2,
+  ),
+);
+
+// ── Bubble shapes ───────────────────────────────────────────────────────────
+$bubble-shapes: (
+  'rounded': (radius: 14px, pad: 6px 10px),
+  'square': (radius: 4px, pad: 6px 10px),
+  // minimal = no bubble chrome at all (transparent fills forced below).
+  'minimal': (radius: 0, pad: 0),
+);
+
+// ── Font stacks (stored as ready-made strings so quoting survives) ─────────
+$fonts: (
+  'system': "system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+  'serif': "Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Times New Roman', serif",
+  'rounded': "ui-rounded, 'Hiragino Maru Gothic ProN', Quicksand, Comfortaa, 'Trebuchet MS', sans-serif",
+  'mono': "ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, monospace",
+);
+
+// ── Densities (cozy mirrors the stock fallbacks exactly) ───────────────────
+$densities: (
+  'cozy': (event-pad: 4px 8px, event-gap: 8px, composer-pad: 6px),
+  'compact': (event-pad: 1px 8px, event-gap: 6px, composer-pad: 4px),
+);
+
+// Pattern ink derives from the (possibly user-overridden) accent at runtime,
+// so recoloring the accent recolors the chat background too.
+$-bg-ink: color-mix(in srgb, var(--hugm-chat-accent, #7c4dff) 26%, transparent);
+$-bg-ink-faint: color-mix(in srgb, var(--hugm-chat-accent, #7c4dff) 16%, transparent);
+
+@mixin -preset-vars($m) {
+  --hugm-chat-accent: #{map.get($m, accent)};
+  --hugm-chat-bg: #{map.get($m, bg)};
+  --hugm-chat-surface: #{map.get($m, surface)};
+  --hugm-chat-border: #{map.get($m, border)};
+  --hugm-chat-bubble-mine: #{map.get($m, bubble-mine)};
+  --hugm-chat-bubble-mine-text: #{map.get($m, bubble-mine-text)};
+  --hugm-chat-bubble-theirs: #{map.get($m, bubble-theirs)};
+  --hugm-chat-bubble-theirs-text: #{map.get($m, bubble-theirs-text)};
+}
+
+@mixin -shape-vars($m) {
+  --hugm-chat-bubble-radius: #{map.get($m, radius)};
+  --hugm-chat-bubble-pad: #{map.get($m, pad)};
+}
+
+@mixin -density-vars($m) {
+  --hugm-chat-event-pad: #{map.get($m, event-pad)};
+  --hugm-chat-event-gap: #{map.get($m, event-gap)};
+  --hugm-chat-composer-pad: #{map.get($m, composer-pad)};
+}
+
+@mixin -chatbg-dots {
+  --hugm-chat-bg-image: radial-gradient(circle, #{$-bg-ink} 1px, transparent 1.4px);
+  --hugm-chat-bg-size: 16px 16px;
+}
+
+@mixin -chatbg-grid {
+  --hugm-chat-bg-image: linear-gradient(to right, #{$-bg-ink-faint} 1px, transparent 1px),
+    linear-gradient(to bottom, #{$-bg-ink-faint} 1px, transparent 1px);
+  --hugm-chat-bg-size: 22px 22px;
+}
+
+@mixin -chatbg-stars {
+  --hugm-chat-bg-image: radial-gradient(1px 1px at 10px 14px, #{$-bg-ink-faint} 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 46px 34px, #{$-bg-ink} 50%, transparent 51%),
+    radial-gradient(1px 1px at 78px 70px, #{$-bg-ink-faint} 50%, transparent 51%),
+    radial-gradient(2px 2px at 108px 22px, #{$-bg-ink} 50%, transparent 51%),
+    radial-gradient(1px 1px at 32px 92px, #{$-bg-ink} 50%, transparent 51%);
+  --hugm-chat-bg-size: 120px 120px;
+}
+
+// ── :host-scoped rules for the theme-root shell components ─────────────────
+// Include at the TOP LEVEL of a component stylesheet whose host registers with
+// ChatThemeService (via ChatThemeRootDirective). All selectors are
+// `:host([data-matrix-*])` so the rules can only ever match that component's
+// own host element — the scoping that keeps the theme inside this remote.
+@mixin chat-theme-host-rules {
+  @each $name, $m in $presets {
+    :host([data-matrix-theme='#{$name}']) {
+      @include -preset-vars($m);
+    }
+  }
+
+  @each $name, $m in $bubble-shapes {
+    :host([data-matrix-bubbles='#{$name}']) {
+      @include -shape-vars($m);
+    }
+  }
+
+  // Minimal bubbles carry no fill; declared AFTER the presets so equal
+  // specificity resolves by source order (the service also drops its inline
+  // fill overrides for this shape).
+  :host([data-matrix-bubbles='minimal']) {
+    --hugm-chat-bubble-mine: transparent;
+    --hugm-chat-bubble-theirs: transparent;
+    --hugm-chat-bubble-mine-text: inherit;
+    --hugm-chat-bubble-theirs-text: inherit;
+  }
+
+  @each $name, $stack in $fonts {
+    :host([data-matrix-font='#{$name}']) {
+      --hugm-chat-font-family: #{$stack};
+    }
+  }
+
+  @each $name, $m in $densities {
+    :host([data-matrix-density='#{$name}']) {
+      @include -density-vars($m);
+    }
+  }
+
+  // 'none' intentionally emits nothing — the consumers' `none/auto` fallbacks apply.
+  :host([data-matrix-chatbg='dots']) {
+    @include -chatbg-dots;
+  }
+
+  :host([data-matrix-chatbg='grid']) {
+    @include -chatbg-grid;
+  }
+
+  :host([data-matrix-chatbg='stars']) {
+    @include -chatbg-stars;
+  }
+}

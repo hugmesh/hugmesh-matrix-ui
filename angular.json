@@ -1,0 +1,210 @@
+{
+	"$schema": "./node_modules/@angular/cli/lib/config/schema.json",
+	"version": 1,
+	"newProjectRoot": "projects",
+	"projects": {
+		"host": {
+			"projectType": "application",
+			"root": "projects/host",
+			"sourceRoot": "projects/host/src",
+			"prefix": "hug",
+			"architect": {
+				"build": {
+					"builder": "@angular-architects/native-federation:build",
+					"options": {
+						"entryPoints": [
+							"projects/host/src/main.ts"
+						],
+						"projectName": "host"
+					},
+					"configurations": {
+						"production": {
+							"target": "host:esbuild:production"
+						},
+						"development": {
+							"target": "host:esbuild:development",
+							"dev": true
+						}
+					},
+					"defaultConfiguration": "production"
+				},
+				"serve": {
+					"builder": "@angular-architects/native-federation:build",
+					"options": {
+						"target": "host:serve-original:development",
+						"rebuildDelay": 0,
+						"dev": true,
+						"port": 0,
+						"entryPoints": [
+							"projects/host/src/main.ts"
+						],
+						"projectName": "host"
+					}
+				},
+				"esbuild": {
+					"builder": "@angular-devkit/build-angular:application",
+					"options": {
+						"outputPath": "dist/host",
+						"index": "projects/host/src/index.html",
+						"browser": "projects/host/src/main.ts",
+						"polyfills": [
+							"zone.js",
+							"es-module-shims"
+						],
+						"tsConfig": "projects/host/tsconfig.app.json",
+						"assets": [
+							{ "glob": "favicon.ico", "input": "projects/host/src", "output": "" }
+						],
+						"styles": ["projects/matrix/src/styles.scss"]
+					},
+					"configurations": {
+						"production": { "outputHashing": "all" },
+						"development": { "optimization": false, "extractLicenses": false, "sourceMap": true }
+					},
+					"defaultConfiguration": "production"
+				},
+				"serve-original": {
+					"builder": "@angular-devkit/build-angular:dev-server",
+					"options": {
+						"buildTarget": "host:build",
+						"port": 4200
+					}
+				},
+				"test": {
+					"builder": "@angular-devkit/build-angular:karma",
+					"options": {
+						"main": "projects/host/src/test.ts",
+						"polyfills": ["zone.js", "zone.js/testing"],
+						"tsConfig": "projects/host/tsconfig.spec.json",
+						"karmaConfig": "karma.conf.js",
+						"assets": [
+							{ "glob": "favicon.ico", "input": "projects/host/src", "output": "" }
+						],
+						"styles": ["projects/matrix/src/styles.scss"],
+						"scripts": []
+					}
+				}
+			}
+		},
+		"matrix": {
+			"projectType": "application",
+			"root": "projects/matrix",
+			"sourceRoot": "projects/matrix/src",
+			"prefix": "hug-matrix",
+			"architect": {
+				"build": {
+					"builder": "@angular-architects/native-federation:build",
+					"options": {
+						"entryPoints": [
+							"projects/matrix/src/main.ts"
+						],
+						"projectName": "matrix"
+					},
+					"configurations": {
+						"production": {
+							"target": "matrix:esbuild:production"
+						},
+						"development": {
+							"target": "matrix:esbuild:development",
+							"dev": true
+						}
+					},
+					"defaultConfiguration": "production"
+				},
+				"serve": {
+					"builder": "@angular-architects/native-federation:build",
+					"options": {
+						"target": "matrix:serve-original:development",
+						"rebuildDelay": 0,
+						"dev": true,
+						"port": 0,
+						"entryPoints": [
+							"projects/matrix/src/main.ts"
+						],
+						"projectName": "matrix"
+					}
+				},
+				"esbuild": {
+					"builder": "@angular-devkit/build-angular:application",
+					"options": {
+						"outputPath": "dist/matrix",
+						"index": "projects/matrix/src/index.html",
+						"browser": "projects/matrix/src/main.ts",
+						"polyfills": [
+							"zone.js",
+							"es-module-shims"
+						],
+						"tsConfig": "projects/matrix/tsconfig.app.json",
+						"assets": [
+							{ "glob": "**/*", "input": "projects/matrix/src/assets", "output": "assets" },
+							{ "glob": "**/*", "input": "node_modules/@mediapipe/tasks-vision/wasm", "output": "assets/mediapipe/wasm" }
+							{ "glob": "favicon.ico", "input": "projects/matrix/src", "output": "" }
+						],
+						"styles": ["projects/matrix/src/styles.scss"]
+					},
+					"configurations": {
+						"production": {
+							"outputHashing": "all",
+							"optimization": {
+								"scripts": true,
+								"styles": { "minify": true, "inlineCritical": false },
+								"fonts": true
+							}
+						},
+						"development": { "optimization": false, "extractLicenses": false, "sourceMap": true }
+					},
+					"defaultConfiguration": "production"
+				},
+				"serve-original": {
+					"builder": "@angular-devkit/build-angular:dev-server",
+					"options": {
+						"buildTarget": "matrix:build",
+						"port": 4201
+					}
+				},
+				"test": {
+					"builder": "@angular-devkit/build-angular:karma",
+					"options": {
+						"main": "projects/matrix/src/test.ts",
+						"polyfills": ["zone.js", "zone.js/testing"],
+						"tsConfig": "projects/matrix/tsconfig.spec.json",
+						"karmaConfig": "karma.conf.js",
+						"assets": [
+							{ "glob": "**/*", "input": "projects/matrix/src/assets", "output": "assets" },
+							{ "glob": "**/*", "input": "node_modules/@mediapipe/tasks-vision/wasm", "output": "assets/mediapipe/wasm" }
+							{ "glob": "favicon.ico", "input": "projects/matrix/src", "output": "" }
+						],
+						"styles": ["projects/matrix/src/styles.scss"],
+						"scripts": []
+					}
+				}
+			}
+		}
+	},
+	"schematics": {
+		"@schematics/angular:component": {
+			"type": "component"
+		},
+		"@schematics/angular:directive": {
+			"type": "directive"
+		},
+		"@schematics/angular:service": {
+			"type": "service"
+		},
+		"@schematics/angular:guard": {
+			"typeSeparator": "."
+		},
+		"@schematics/angular:interceptor": {
+			"typeSeparator": "."
+		},
+		"@schematics/angular:module": {
+			"typeSeparator": "."
+		},
+		"@schematics/angular:pipe": {
+			"typeSeparator": "."
+		},
+		"@schematics/angular:resolver": {
+			"typeSeparator": "."
+		}
+	}
+}

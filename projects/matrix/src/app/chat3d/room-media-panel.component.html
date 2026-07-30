@@ -1,0 +1,64 @@
+<aside class="media-panel" data-testid="chat3d-media-panel" aria-label="Channel media for the 3D room">
+  <h3>Channel media</h3>
+  <p *ngIf="loading()" class="loading" data-testid="media-panel-loading" role="status">Loading channel media…</p>
+
+  <!-- Offered-but-greyed WHY (allowMedia off) — never hidden. -->
+  <p *ngIf="placeHelp()" class="field-help" id="media-panel-place-help" data-testid="media-panel-place-help" role="status">{{ placeHelp() }}</p>
+  <p *ngIf="stageHelp()" class="field-help" data-testid="media-panel-stage-help">{{ stageHelp() }}</p>
+  <p *ngIf="placeNote()" class="field-help place-note" data-testid="media-panel-place-note" role="alert">{{ placeNote() }}</p>
+
+  <!-- The placement the user last clicked INSIDE the scene. -->
+  <div *ngIf="activated" class="activated" data-testid="media-panel-activated" role="status">
+    <span>In scene ({{ activated.surfaceId }}): {{ activated.label || activated.eventId }}</span>
+    <button type="button" data-testid="btn-media-panel-open-activated"
+            *ngIf="activatedItem()?.mxcUri" (click)="open(activatedItem()!)">Open</button>
+  </div>
+
+  <!-- The open-in-panel viewer (video v1: poster in scene, playback HERE). -->
+  <div *ngIf="viewer() as v" class="viewer" data-testid="media-panel-viewer">
+    <header>
+      <span>{{ v.item.label }}</span>
+      <button type="button" data-testid="btn-media-panel-close-viewer" (click)="closeViewer()">Close</button>
+    </header>
+    <img *ngIf="v.item.kind === 'image'" [src]="v.url" [alt]="v.item.label" />
+    <video *ngIf="v.item.kind === 'video'" [src]="v.url" controls
+           aria-label="Video playback (in panel — the scene surface shows its poster frame)"></video>
+    <a *ngIf="v.item.kind === 'file'" [href]="v.url" [download]="v.item.label" data-testid="media-panel-file-link">
+      Download {{ v.item.label }}
+    </a>
+  </div>
+
+  <ng-container *ngFor="let section of [
+    { title: 'Media', items: mediaItems(), testid: 'media' },
+    { title: 'Threads', items: threadItems(), testid: 'threads' },
+    { title: 'Pinned', items: pinnedItems(), testid: 'pinned' }
+  ]">
+    <h4>{{ section.title }}</h4>
+    <p *ngIf="!loading() && section.items.length === 0" class="empty"
+       [attr.data-testid]="'media-panel-' + section.testid + '-empty'">None found in this channel.</p>
+    <ul [attr.aria-label]="section.title" [attr.data-testid]="'media-panel-' + section.testid">
+      <li *ngFor="let item of section.items" [attr.data-testid]="'media-item-' + item.eventId">
+        <span class="kind" aria-hidden="true">{{ item.kind }}</span>
+        <span class="label" [title]="item.label">{{ item.label }}</span>
+        <a *ngIf="item.kind === 'thread'" [routerLink]="['/rooms', roomId, 'thread', item.eventId]"
+           [attr.data-testid]="'media-item-thread-link-' + item.eventId">View thread</a>
+        <button *ngIf="item.mxcUri" type="button"
+                [attr.data-testid]="'btn-media-open-' + item.eventId"
+                (click)="open(item)">Open</button>
+        <label>
+          <span class="visually-hidden">Surface for {{ item.label }}</span>
+          <select [(ngModel)]="chosenSurface[item.eventId]" [disabled]="!canPlace()"
+                  [attr.data-testid]="'media-surface-' + item.eventId">
+            <option value="" disabled selected>Surface…</option>
+            <option *ngFor="let s of surfaces" [value]="s"
+                    [disabled]="s === 'stage' && !canPlaceStage()">{{ s }}</option>
+          </select>
+        </label>
+        <button type="button" [attr.data-testid]="'btn-media-place-' + item.eventId"
+                [disabled]="!canPlace() || !chosenSurface[item.eventId] || (chosenSurface[item.eventId] === 'stage' && !canPlaceStage())"
+                [attr.aria-describedby]="canPlace() ? null : 'media-panel-place-help'"
+                (click)="place(item)">Place</button>
+      </li>
+    </ul>
+  </ng-container>
+</aside>

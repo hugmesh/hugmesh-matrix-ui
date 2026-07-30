@@ -1,0 +1,51 @@
+{
+  "name": "@hugmesh/matrix",
+  "version": "0.1.0",
+  "description": "hugmesh.systems demo host shell + the Matrix native-federation remote. Mastodon/login/admin remotes live in their own repos and federate in at runtime.",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "ng": "ng",
+    "start": "ng serve host",
+    "build": "ng build host && ng build matrix",
+    "build:host": "ng build host",
+    "build:matrix": "ng build matrix",
+    "test": "ng test matrix --watch=false --browsers=ChromeHeadlessCI",
+    "test:watch": "ng test matrix",
+    "test:host": "ng test host --watch=false --browsers=ChromeHeadlessCI",
+    "e2e:face": "node e2e/face-track/run.mjs",
+    "e2e:face:clip": "node e2e/face-track/gen-clip.mjs"
+  },
+  "dependencies": {
+    "@angular-architects/native-federation": "^22.0.0",
+    "@angular/animations": "^22.0.2",
+    "@angular/common": "^22.0.2",
+    "@angular/compiler": "^22.0.2",
+    "@angular/core": "^22.0.2",
+    "@angular/forms": "^22.0.2",
+    "@angular/platform-browser": "^22.0.2",
+    "@angular/platform-browser-dynamic": "^22.0.2",
+    "@angular/router": "^22.0.2",
+    "@mediapipe/tasks-vision": "0.10.35",
+    "@softarc/native-federation-node": "^3.5.5",
+    "dompurify": "^3.4.11",
+    "es-module-shims": "^2.8.1",
+    "rxjs": "^7.8.2",
+    "tslib": "^2.6.0",
+    "zone.js": "^0.16.1"
+  },
+  "devDependencies": {
+    "@angular-devkit/build-angular": "^22.0.4",
+    "@angular/cli": "^22.0.4",
+    "@angular/compiler-cli": "^22.0.2",
+    "@types/jasmine": "^6.0.0",
+    "jasmine-core": "^6.3.0",
+    "karma": "^6.4.4",
+    "karma-chrome-launcher": "^3.2.0",
+    "karma-coverage": "^2.2.1",
+    "karma-jasmine": "^5.1.0",
+    "karma-jasmine-html-reporter": "^2.2.0",
+    "ng-packagr": "^22.0.0",
+    "typescript": "~6.0.3"
+  }
+}

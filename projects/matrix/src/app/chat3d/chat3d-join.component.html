@@ -1,0 +1,106 @@
+<!-- Once entered, the join menu yields entirely to the embedded room host. -->
+<hug-chat3d-host *ngIf="entered() && roomId() && joinedAvatar()"
+                  [roomId]="roomId()!"
+                  [avatar]="joinedAvatar()!"
+                  [micEnabled]="micEnabled"
+                  [cameraEnabled]="cameraEnabled"></hug-chat3d-host>
+
+<section *ngIf="!entered()" class="chat3d-join" data-testid="chat3d-join" aria-label="Join the 3D room">
+  <header>
+    <h3>Shadows of the Net — 3D room</h3>
+    <a *ngIf="roomId() as rid" [routerLink]="['/rooms', rid]" data-testid="btn-chat3d-join-back">
+      <span aria-hidden="true">←</span> Back to room
+    </a>
+  </header>
+
+  <p *ngIf="loading()" role="status" aria-live="polite" data-testid="chat3d-join-loading">Checking this room…</p>
+
+  <!-- Deep-link honesty: the route re-checks enablement itself. -->
+  <p *ngIf="!loading() && !enabled()" class="field-help" data-testid="chat3d-join-disabled"
+     role="status" aria-live="polite">
+    The 3D room is not enabled in this channel. A room moderator can enable it under
+    Room settings → 3D chat room.
+  </p>
+
+  <ng-container *ngIf="!loading() && enabled()">
+    <fieldset class="source" data-testid="chat3d-source">
+      <legend>Appear as</legend>
+
+      <label for="c3d-src-forge" class="check">
+        <input id="c3d-src-forge" type="radio" name="c3d-source" value="forge"
+               data-testid="input-source-forge" [(ngModel)]="source"
+               [disabled]="!forgeCharacter()"
+               [attr.aria-describedby]="forgeCharacter() ? 'c3d-forge-help' : 'c3d-forge-help c3d-forge-why'" />
+        My Character Forge character
+        <span *ngIf="forgeCharacter() as fc" class="detail" data-testid="chat3d-forge-name">({{ fc.name }})</span>
+      </label>
+      <p id="c3d-forge-help" class="field-help">
+        Your active 3D character from Character Forge — the full parametric avatar.
+      </p>
+      <p *ngIf="!forgeCharacter()" id="c3d-forge-why" class="field-help why" data-testid="chat3d-forge-why">
+        {{ forgeHelp() }}
+      </p>
+
+      <label for="c3d-src-billboard" class="check">
+        <input id="c3d-src-billboard" type="radio" name="c3d-source" value="billboard"
+               data-testid="input-source-billboard" [(ngModel)]="source"
+               [disabled]="!stickerUrl()"
+               [attr.aria-describedby]="stickerUrl() ? 'c3d-billboard-help' : 'c3d-billboard-help c3d-billboard-why'" />
+        My VN sticker (billboard)
+      </label>
+      <p id="c3d-billboard-help" class="field-help">
+        A flat stand-up of your VN character's neutral sticker — no 3D model needed.
+      </p>
+      <p *ngIf="!stickerUrl()" id="c3d-billboard-why" class="field-help why" data-testid="chat3d-billboard-why">
+        {{ billboardHelp() }}
+      </p>
+
+      <label for="c3d-src-guest" class="check">
+        <input id="c3d-src-guest" type="radio" name="c3d-source" value="guest"
+               data-testid="input-source-guest" [(ngModel)]="source"
+               aria-describedby="c3d-guest-help" />
+        Random guest
+      </label>
+      <p id="c3d-guest-help" class="field-help">
+        A randomly generated character. The same seed always gives the same guest.
+      </p>
+      <label for="c3d-guest-seed" class="seed">Guest seed
+        <input id="c3d-guest-seed" data-testid="input-guest-seed" [(ngModel)]="guestSeed"
+               [disabled]="source !== 'guest'" aria-describedby="c3d-guest-help" />
+      </label>
+    </fieldset>
+
+    <fieldset class="av" data-testid="chat3d-av">
+      <legend>Audio &amp; camera</legend>
+      <label for="c3d-mic" class="check">
+        <input id="c3d-mic" type="checkbox" data-testid="input-chat3d-mic"
+               [(ngModel)]="micEnabled" aria-describedby="c3d-mic-help" />
+        Microphone
+      </label>
+      <p id="c3d-mic-help" class="field-help" data-testid="chat3d-mic-help">
+        Voice chat with the room. Leaving this on opens your microphone as soon as you enter, and
+        your voice is sent peer-to-peer to the other members of the 3D room. Your browser asks
+        first — unless you already granted this site the microphone, in which case it opens with
+        no further prompt.
+      </p>
+      <label for="c3d-cam" class="check">
+        <input id="c3d-cam" type="checkbox" data-testid="input-chat3d-camera"
+               [(ngModel)]="cameraEnabled" aria-describedby="c3d-cam-help" />
+        Camera face tracking
+      </label>
+      <p id="c3d-cam-help" class="field-help" data-testid="chat3d-camera-help">
+        Drives your character's face from your camera. Leaving this on opens your camera as soon
+        as you enter, and your browser asks first — unless you already granted this site the
+        camera, in which case it opens with no further prompt. All processing happens on your
+        device: camera frames never leave it, and only the resulting face-shape numbers are sent
+        to the other members.
+      </p>
+    </fieldset>
+
+    <button type="button" data-testid="btn-chat3d-enter"
+            aria-describedby="c3d-enter-help" (click)="enter()">Enter the room</button>
+    <p id="c3d-enter-help" class="field-help">
+      Publishes your chosen appearance to the room and opens the 3D chamber.
+    </p>
+  </ng-container>
+</section>

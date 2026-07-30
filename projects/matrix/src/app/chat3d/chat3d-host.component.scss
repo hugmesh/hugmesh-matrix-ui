@@ -1,0 +1,78 @@
+// Shadows of the Net host: a dark letterboxed frame filling the view, with a
+// slim control bar above it (noir mood — near-black chrome, cyan accents).
+.chat3d-host {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  height: 100%;
+  min-height: 480px;
+  background: #0b0e12;
+  color: #cfd8e3;
+  padding: 0.5rem;
+}
+
+.chat3d-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+
+  a {
+    color: #7fd1e0;
+    text-decoration: none;
+    &:hover { text-decoration: underline; }
+  }
+
+  .loading { opacity: 0.8; }
+
+  .vr-badge {
+    background: #143a42;
+    color: #9be8f5;
+    border-radius: 0.25rem;
+    padding: 0.1rem 0.5rem;
+    font-size: 0.85rem;
+  }
+
+  button {
+    background: #16323a;
+    color: #cfeef5;
+    border: 1px solid #2a5560;
+    border-radius: 0.3rem;
+    padding: 0.25rem 0.8rem;
+    cursor: pointer;
+    &:disabled { opacity: 0.5; cursor: default; }
+
+    // Keep the button cluster right-aligned (media-panel toggle + Enter VR).
+    &:first-of-type { margin-left: auto; }
+  }
+}
+
+.field-help {
+  font-size: 0.8rem;
+  opacity: 0.75;
+  margin: 0;
+}
+
+.disabled-note { color: #f0b26b; }
+
+.chat3d-main {
+  flex: 1;
+  display: flex;
+  gap: 0.5rem;
+  min-height: 0; // let the frame + panel shrink inside the column layout
+
+  snap-chat3d-media-panel {
+    background: #0e141b;
+    border: 1px solid #1d2732;
+    border-radius: 0.4rem;
+    overflow-y: auto;
+  }
+}
+
+.game-frame {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  border: 1px solid #1d2732;
+  border-radius: 0.4rem;
+  background: #05070a;
+}

@@ -1,0 +1,132 @@
+<div class="composer" data-testid="composer">
+  <div *ngIf="mode() === 'reply'" class="banner reply-banner" data-testid="reply-banner" role="status">
+    Replying to {{ targetSummary() }}
+    <button type="button" data-testid="btn-cancel-reply" aria-label="Cancel reply" (click)="cancel()">
+      <span aria-hidden="true">✕</span>
+    </button>
+  </div>
+  <div *ngIf="mode() === 'edit'" class="banner edit-banner" data-testid="edit-banner" role="status">
+    Editing message
+    <button type="button" data-testid="btn-cancel-reply" aria-label="Cancel edit" (click)="cancel()">
+      <span aria-hidden="true">✕</span>
+    </button>
+  </div>
+  <div *ngIf="mode() === 'thread'" class="banner thread-banner" role="status">
+    Replying in thread
+    <button type="button" aria-label="Cancel thread reply" (click)="cancel()">
+      <span aria-hidden="true">✕</span>
+    </button>
+  </div>
+
+  <!-- Pending attachment (upload is decoupled from send): held here with its
+       honest AI-cloak badge until the user explicitly sends or discards. -->
+  <div *ngIf="pending() as att" class="attachment" data-testid="pending-attachment" role="group"
+       [attr.aria-label]="'Pending attachment ' + att.file.name">
+    <div class="att-head">
+      <span class="att-name">{{ att.file.name }}</span>
+      <span class="badge"
+            [class.is-applied]="att.cloak === 'cloaked'"
+            [class.is-degraded]="att.cloak === 'degraded'"
+            [class.is-pending]="att.cloak === 'pending'"
+            [class.is-off]="att.cloak === 'skipped' || att.cloak === 'failed'"
+            data-testid="cloak-badge" role="status" aria-live="polite">
+        {{ badgeText(att.cloak) }}
+      </span>
+    </div>
+    <p *ngIf="att.cloak === 'pending'" class="att-progress" data-testid="cloak-progress" role="status" aria-live="polite">
+      Protecting your image…{{ cloakEta }}
+    </p>
+    <div class="att-actions">
+      <button *ngIf="att.cloak === 'pending'" type="button" class="link" data-testid="btn-post-now"
+              (click)="postNow()" [disabled]="busy()">
+        Post now without protection
+      </button>
+      <button *ngIf="att.cloak !== 'pending'" type="button" class="primary" data-testid="btn-send-attachment"
+              (click)="sendAttachment()" [disabled]="busy()">
+        Send image
+      </button>
+      <button type="button" class="link" data-testid="btn-discard-attachment"
+              (click)="discardAttachment()" [disabled]="busy()">
+        Discard
+      </button>
+    </div>
+  </div>
+
+  <div class="row">
+    <button type="button" class="emoji" data-testid="btn-emoji" aria-label="Add emoji" (click)="appendEmoji()">
+      <span aria-hidden="true">😀</span>
+    </button>
+    <label class="sr" for="composer-input">{{ placeholder }}</label>
+    <input id="composer-input" data-testid="matrix-input" [(ngModel)]="draft"
+           [placeholder]="placeholder"
+           (keyup.enter)="send()" (input)="onInput()" (blur)="stopTyping()" />
+    <button type="button" class="cloak-toggle" data-testid="composer-poison-toggle"
+            [class.is-on]="poisonImages() && capability().available"
+            [attr.aria-pressed]="poisonImages()"
+            [attr.aria-label]="cloakLabel"
+            [attr.aria-describedby]="'composer-poison-help'"
+            [disabled]="!capability().available"
+            [attr.title]="capability().available ? 'AI-cloak applies best-effort training-data hygiene before upload (not a guarantee)' : 'AI-cloak is unavailable on this server right now'"
+            (click)="togglePoison()">
+      <span aria-hidden="true">🛡</span>
+      <span class="cloak-text">{{ cloakLabel }}</span>
+    </button>
+
+    <!-- Local-only / domain-lock — ALWAYS DISABLED: post-level local-only is not
+         a Matrix primitive (it is a room-create m.federate=false setting), so this
+         control is never a freely-toggleable per-post switch. Its STATE is DRIVEN
+         by the account-level domain lock (matrix_domainlocked marker): forced ON +
+         "enforced" when locked, inert OFF otherwise. Either way it is rendered
+         disabled+helptext (never a bare disabled control). aria-disabled (NOT
+         native disabled) keeps it discoverable so SRs read the WHY-helptext. -->
+    <button type="button" class="local-only-toggle" data-testid="composer-local-only-toggle"
+            [class.is-locked]="domainLocked()"
+            aria-disabled="true"
+            [attr.aria-pressed]="localOnly()"
+            [attr.aria-label]="localOnlyLabel"
+            [attr.aria-describedby]="'composer-local-only-help'"
+            [attr.title]="localOnlyHelp"
+            (click)="$event.preventDefault()">
+      <span aria-hidden="true">🏠</span>
+      <span class="local-only-text">{{ localOnlyLabel }}</span>
+    </button>
+
+    <!-- VN sticker picker toggle (MSC2545 send-half). matrix-ui is a CUSTOM client
+         with no built-in MSC2545 picker, so this is how a user sends one of their
+         own registered expression stickers. The picker shows an empty state when
+         the user has no pack, so the button is never hidden on async pack state. -->
+    <button #stickerToggle type="button" class="sticker-toggle" data-testid="btn-sticker"
+            [class.is-open]="stickerPickerOpen()"
+            aria-label="Send a sticker"
+            aria-haspopup="menu"
+            [attr.aria-expanded]="stickerPickerOpen()"
+            (click)="toggleStickerPicker()">
+      <span aria-hidden="true">🩹</span>
+    </button>
+
+    <button type="button" data-testid="btn-attach" aria-label="Attach a file" (click)="fileInput.click()">
+      <span aria-hidden="true">📎</span>
+    </button>
+    <input #fileInput type="file" data-testid="input-file" aria-hidden="true" tabindex="-1" hidden (change)="onFile($event)" />
+    <button type="button" data-testid="matrix-send" (click)="send()" [disabled]="busy()">Send</button>
+  </div>
+
+  <!-- The sticker picker overlay: own-pack grid + empty state. picked closes +
+       refreshes the timeline (onStickerSent); dismissed (Escape) just closes and
+       returns focus to the toggle. -->
+  <hug-sticker-picker *ngIf="stickerPickerOpen()" class="sticker-picker-overlay"
+                       data-testid="composer-sticker-picker"
+                       [roomId]="roomId"
+                       (picked)="onStickerSent($event)"
+                       (dismissed)="closeStickerPicker()"></hug-sticker-picker>
+
+  <!-- Helptext targets for the toggles (aria-describedby). The poison helptext
+       carries the OPT-OUT phrasing; the local-only helptext explains WHY it is
+       disabled (room-level + pending enforcement). -->
+  <p id="composer-poison-help" class="field-help" data-testid="composer-poison-help">{{ cloakHelp }}</p>
+  <p id="composer-local-only-help" class="field-help" data-testid="composer-local-only-help"
+     [class.is-locked]="domainLocked()"
+     [attr.role]="domainLocked() ? 'status' : null"
+     [attr.aria-live]="domainLocked() ? 'polite' : null">{{ localOnlyHelp }}</p>
+  <p *ngIf="status()" class="status" role="status" aria-live="polite" data-testid="composer-status">{{ status() }}</p>
+</div>

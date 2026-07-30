@@ -1,0 +1,151 @@
+@if (session.isUser()) {
+<div class="role-actions" [class.inline]="inline" data-testid="role-actions" (keydown)="onKeydown($event)">
+  <button
+    *ngIf="!inline"
+    type="button"
+    class="role-actions-trigger"
+    data-testid="role-actions-trigger"
+    [attr.aria-expanded]="open()"
+    [attr.aria-label]="'Moderation and self-actions for ' + (target || 'this user')"
+    (click)="toggle()">
+    <span aria-hidden="true">⋯</span>
+    <span class="sr">Moderation and self-actions for {{ target || 'this user' }}</span>
+  </button>
+
+  @if (open()) {
+  <div class="role-actions-menu" [class.inline]="inline" data-testid="role-actions-menu" role="group"
+       [attr.aria-label]="'Actions for ' + (target || 'this user')">
+
+    <!-- async result live regions: success = status, error = alert -->
+    <p class="result status" role="status" aria-live="polite" data-testid="role-actions-status"
+       *ngIf="statusMsg()">{{ statusMsg() }}</p>
+    <p class="result error" role="alert" aria-live="assertive" data-testid="role-actions-error"
+       *ngIf="errorMsg()">{{ errorMsg() }}</p>
+
+    <section class="tier user-tier" data-testid="tier-user" aria-labelledby="tier-user-h">
+      <h4 id="tier-user-h">Your actions</h4>
+      <p class="section-help" data-testid="ra-user-help">
+        These actions affect only you. Blocking or muting hides someone from your own view;
+        recommending an instance block asks the moderators to consider acting for everyone.
+      </p>
+
+      <div class="row" *ngIf="!isSelf">
+        <label class="sr" for="ra-block-platform">Block scope</label>
+        <select id="ra-block-platform" data-testid="ra-block-platform" [(ngModel)]="blockPlatform"
+                aria-describedby="ra-block-help">
+          <option value="matrix">Matrix (external)</option>
+          <option value="internal">Internal only</option>
+        </select>
+        <button type="button" data-testid="ra-block-user"
+                [attr.aria-label]="'Block or mute ' + target"
+                aria-describedby="ra-block-help"
+                (click)="blockTarget()">Block / mute user</button>
+      </div>
+      <p *ngIf="!isSelf" id="ra-block-help" class="field-help" data-testid="ra-block-help">
+        Matrix (external) hides them everywhere your block can reach; Internal only limits the block
+        to this platform. This affects only your own view.
+      </p>
+
+      <div class="row recommend">
+        <label class="sr" for="ra-recommend-reason">Reason for recommending an instance block</label>
+        <input id="ra-recommend-reason" data-testid="ra-recommend-reason" [(ngModel)]="recommendReason"
+               placeholder="Reason (optional)" aria-describedby="ra-recommend-help" />
+        <button type="button" data-testid="ra-recommend"
+                [attr.aria-label]="'Recommend an instance block on ' + derivedInstance() + ' to the moderators'"
+                aria-describedby="ra-recommend-help"
+                (click)="recommendInstanceBlock()">Recommend instance block</button>
+      </div>
+      <p id="ra-recommend-help" class="field-help" data-testid="ra-recommend-help">
+        Sends the moderators a suggestion to block the whole server
+        <strong>{{ derivedInstance() }}</strong>. An optional reason helps them decide. It does not
+        block anything by itself.
+      </p>
+
+      <div class="my-blocks" *ngIf="blocks().length">
+        <h5>Your blocks</h5>
+        <ul>
+          <li *ngFor="let b of blocks()" [attr.data-testid]="'ra-myblock-' + b.id">
+            <span class="b-target">{{ b.target }}</span>
+            <span class="b-platform">{{ b.platform }}</span>
+            <button type="button" [attr.data-testid]="'ra-unblock-' + b.id"
+                    [attr.aria-label]="'Remove block on ' + b.target"
+                    (click)="unblock(b)">Remove</button>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="tier mod-tier" data-testid="tier-mod" aria-labelledby="tier-mod-h"
+             *ngIf="session.isMod()">
+      <h4 id="tier-mod-h">Moderator tools</h4>
+      <p class="section-help" data-testid="ra-mod-help">
+        These actions apply for the whole server, not just you. Use them to block users or instances
+        and to triage requests raised by members.
+      </p>
+
+      <div class="row">
+        <label class="sr" for="ra-mod-scope">Server-wide block scope</label>
+        <select id="ra-mod-scope" data-testid="ra-mod-scope" [(ngModel)]="modScope"
+                aria-describedby="ra-mod-block-help">
+          <option value="user">This user</option>
+          <option value="instance">Whole instance</option>
+        </select>
+        <label class="sr" for="ra-mod-reason">Reason</label>
+        <input id="ra-mod-reason" data-testid="ra-mod-reason" [(ngModel)]="modReason"
+               placeholder="Reason (optional)" aria-describedby="ra-mod-block-help" />
+        <button type="button" data-testid="ra-mod-block"
+                aria-label="Apply a server-wide block on Matrix"
+                aria-describedby="ra-mod-block-help"
+                (click)="modBlock()">Server-wide block</button>
+      </div>
+      <p id="ra-mod-block-help" class="field-help" data-testid="ra-mod-block-help">
+        "This user" blocks the single account; "Whole instance" blocks every account on their server.
+        The optional reason is recorded in the moderation audit log. This affects all members.
+      </p>
+
+      <div class="queue">
+        <div class="queue-head">
+          <h5>Moderation queue</h5>
+          <button type="button" data-testid="ra-load-queue"
+                  aria-label="Load the moderation queue"
+                  aria-describedby="ra-queue-help" (click)="loadQueue()">Load queue</button>
+        </div>
+        <p id="ra-queue-help" class="field-help" data-testid="ra-queue-help">
+          Loads pending requests raised by members. Refer a request to escalate it to an admin for a
+          final decision.
+        </p>
+        <p *ngIf="!queue().length" class="empty" role="status">No queued requests loaded.</p>
+        <ul *ngIf="queue().length">
+          <li *ngFor="let req of queue()" [attr.data-testid]="'ra-queue-' + req.id">
+            <span class="q-kind">{{ req.kind }}</span>
+            <span class="q-target">{{ req.target }}</span>
+            <span class="q-status" [attr.data-status]="req.status">{{ req.status }}</span>
+            <button type="button" [attr.data-testid]="'ra-refer-' + req.id"
+                    [attr.aria-label]="'Refer request ' + req.id + ' to an admin'"
+                    (click)="refer(req)">Refer to admin</button>
+
+            <!-- ─────────────── ADMIN tier (admin only) ─────────────── -->
+            <span class="admin-actions" *ngIf="session.isAdmin()" data-testid="tier-admin">
+              <button type="button" [attr.data-testid]="'ra-approve-' + req.id"
+                      [disabled]="decidingIds().has(req.id)"
+                      [attr.aria-label]="'Approve request ' + req.id"
+                      (click)="adminDecide(req, true)">Approve</button>
+              <button type="button" [attr.data-testid]="'ra-deny-' + req.id"
+                      [disabled]="decidingIds().has(req.id)"
+                      [attr.aria-label]="'Deny request ' + req.id"
+                      (click)="adminDecide(req, false)">Deny</button>
+            </span>
+          </li>
+        </ul>
+        <p class="stub-note" *ngIf="session.isAdmin()" data-testid="admin-stub-note">
+          Approve records the request's kill-switch override and drops the target's
+          modules from the manifest; Deny rearms it if a prior approve applied one.
+          Both are recorded independently in the audit trail.
+        </p>
+      </div>
+    </section>
+
+  </div>
+  }
+</div>
+}

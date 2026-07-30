@@ -1,0 +1,267 @@
+@use '../styles/tokens' as t;
+
+// Per-user chat theming: the var(--hugm-chat-*, fallback) values inherit from
+// the nearest theme root (theme/chat-theme.service.ts); the fallbacks are the
+// stock values so with NO theme set nothing changes visually.
+.composer {
+  border-top: 1px solid rgba(t.$neon, t.$opacity-border);
+  border-top-color: var(--hugm-chat-border, rgba(t.$neon, t.$opacity-border));
+  padding: var(--hugm-chat-composer-pad, 6px);
+  background: var(--hugm-chat-surface, transparent);
+  font-family: var(--hugm-chat-font-family, inherit);
+}
+
+.row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  // MOBILE: the action buttons wrap onto a second line rather than pushing
+  // past the viewport — a phone-width composer must never force horizontal
+  // body scroll (the phone-viewport e2e asserts scrollWidth <= clientWidth).
+  flex-wrap: wrap;
+}
+
+.row input[type='text'],
+.row input:not([type]) {
+  // flex-basis 10rem + min-width 0: the input keeps a usable width when there
+  // is room but CAN shrink below its intrinsic ~20-char default size on
+  // phones instead of shoving the buttons off-screen.
+  flex: 1 1 10rem;
+  min-width: 0;
+  padding: 6px;
+}
+
+.banner {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  background: rgba(t.$pastel-sky, 0.12);
+  padding: 2px 6px;
+  border-radius: t.$radius-sm;
+  margin-bottom: 4px;
+}
+
+.status {
+  font-size: 11px;
+  color: t.$muted;
+  margin: 2px 0 0;
+}
+
+.emoji {
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+// ── AI-cloak shield toggle (default-ON, honest copy) ──
+.cloak-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  background: rgba(t.$mid, 0.3);
+  color: t.$light;
+  border: 1px solid rgba(t.$neon, t.$opacity-border);
+  border-radius: t.$radius-sm;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 4px 8px;
+  transition: border-color t.$transition-base, color t.$transition-base, background t.$transition-base;
+
+  &.is-on {
+    color: var(--hug-success);
+    border-color: rgba(var(--hug-success), 0.5);
+    background: rgba(t.$pastel-mint, 0.12);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  &:hover:not(:disabled),
+  &:focus-visible {
+    border-color: rgba(t.$neon, 0.5);
+  }
+
+  // Hide the wordy label on narrow viewports; the aria-label keeps it accessible.
+  .cloak-text {
+    @media (max-width: t.$bp-sm) {
+      display: none;
+    }
+  }
+}
+
+// ── Local-only / domain-lock toggle (DISABLED by design — see template) ──
+.local-only-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  background: rgba(t.$mid, 0.3);
+  color: t.$light;
+  border: 1px solid rgba(t.$neon, t.$opacity-border);
+  border-radius: t.$radius-sm;
+  font-size: 12px;
+  line-height: 1;
+  padding: 4px 8px;
+
+  // aria-disabled (not native disabled) ⇒ style the disabled affordance off the
+  // ARIA state so the control stays discoverable + reads its helptext.
+  &[aria-disabled='true'] {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  // Domain-locked ⇒ local-only is ENFORCED (forced on), not merely unavailable:
+  // render it as an active/locked affordance (tinted, fuller opacity) so the
+  // greyed-out "off" affordance is never mistaken for the enforced "on" state.
+  &.is-locked {
+    background: rgba(t.$neon, 0.18);
+    border-color: rgba(t.$neon, 0.6);
+    color: t.$neon;
+
+    &[aria-disabled='true'] {
+      opacity: 0.95;
+    }
+  }
+
+  .local-only-text {
+    @media (max-width: t.$bp-sm) {
+      display: none;
+    }
+  }
+}
+
+// ── VN sticker picker toggle (MSC2545 send-half) ──
+.sticker-toggle {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: t.$radius-sm;
+  cursor: pointer;
+  line-height: 1;
+  padding: 4px 6px;
+
+  &.is-open,
+  &:hover,
+  &:focus-visible {
+    border-color: rgba(t.$neon, 0.5);
+  }
+}
+
+// The picker overlay sits above the composer row (transient menu).
+.sticker-picker-overlay {
+  display: block;
+  margin-top: 6px;
+}
+
+// Helptext wired by aria-describedby for the disabled/opt-out toggles.
+.field-help {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: t.$muted;
+}
+
+// ── Pending attachment tile (upload decoupled from send) ──
+.attachment {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 6px;
+  padding: 8px;
+  background: rgba(t.$surface, 0.6);
+  border: 1px solid rgba(t.$neon, t.$opacity-border);
+  border-radius: t.$radius-sm;
+}
+
+.att-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.att-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: t.$offwhite;
+}
+
+.badge {
+  flex: 0 0 auto;
+  font-size: 11px;
+  border-radius: t.$radius-sm;
+  padding: 2px 8px;
+  background: rgba(t.$mid, 0.5);
+  color: t.$light;
+
+  &.is-applied {
+    color: var(--hug-success);
+    background: rgba(t.$pastel-mint, 0.14);
+    border: 1px solid rgba(var(--hug-success), 0.4);
+  }
+
+  &.is-degraded {
+    color: var(--hug-error);
+    background: rgba(t.$pastel-rose, 0.14);
+    border: 1px solid rgba(var(--hug-error), 0.4);
+  }
+
+  &.is-pending {
+    color: t.$pastel-sky;
+    background: rgba(t.$pastel-sky, 0.14);
+  }
+
+  &.is-off {
+    color: t.$muted;
+  }
+}
+
+.att-progress {
+  margin: 0;
+  font-size: 12px;
+  color: t.$pastel-sky;
+}
+
+.att-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+
+  .primary {
+    background: rgba(t.$neon, 0.14);
+    color: t.$neon-bright;
+    border: 1px solid rgba(t.$neon, 0.4);
+    border-radius: t.$radius-sm;
+    cursor: pointer;
+    padding: 4px 10px;
+    font-size: 13px;
+  }
+
+  .link {
+    background: none;
+    border: none;
+    color: t.$light;
+    text-decoration: underline;
+    cursor: pointer;
+    padding: 4px 2px;
+    font-size: 12px;
+
+    &:hover:not(:disabled),
+    &:focus-visible {
+      color: t.$neon-bright;
+    }
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+}

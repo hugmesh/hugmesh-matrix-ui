@@ -1,0 +1,79 @@
+<div class="scene-picker" data-testid="scene-picker">
+  <!-- Scene backgrounds: an accessible radiogroup grid of thumbnails. The
+       thumbnail <img> is decorative (alt="") beside the visible label text. -->
+  <div class="picker-section" role="radiogroup" aria-label="Scene background">
+    <h3 class="picker-heading" aria-hidden="true">Scene</h3>
+    <div class="scene-grid">
+      <!-- APG radio pattern: roving tabindex (only the checked tile tabbable)
+           + arrow keys move/select within the group (onSceneKeydown). -->
+      <button type="button" class="scene-tile" data-testid="scene-none"
+              role="radio" [attr.aria-checked]="isSelected(null)"
+              [class.selected]="isSelected(null)"
+              [attr.tabindex]="radioTabindex(null)"
+              (keydown)="onSceneKeydown($event, null)"
+              (click)="selectScene(null)">
+        <span class="scene-thumb scene-thumb-none" aria-hidden="true"></span>
+        <span class="scene-name">No scene</span>
+      </button>
+      <button *ngFor="let s of scenes.scenes()" type="button" class="scene-tile"
+              data-testid="scene-tile"
+              role="radio" [attr.aria-checked]="isSelected(s.id)"
+              [class.selected]="isSelected(s.id)"
+              [attr.data-scene-id]="s.id"
+              [attr.tabindex]="radioTabindex(s.id)"
+              (keydown)="onSceneKeydown($event, s.id)"
+              (click)="selectScene(s.id)">
+        <img class="scene-thumb" [src]="scenes.sceneUrl(s.id)" alt=""
+             aria-hidden="true" loading="lazy" decoding="async" draggable="false" />
+        <span class="scene-name" [attr.title]="s.displayName">{{ s.displayName }}</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Prop palette: add a prop to the shared set dressing. Add disables at the
+       shared-state MAX_PROPS ceiling (the announced cap notice says why). -->
+  <div class="picker-section" role="group" aria-label="Add prop">
+    <h3 class="picker-heading" aria-hidden="true">Props</h3>
+    <div class="prop-palette">
+      <button *ngFor="let p of scenes.props()" type="button" class="prop-tile"
+              data-testid="prop-add"
+              [attr.data-prop-id]="p.id"
+              [attr.aria-label]="'Add ' + p.displayName + ' prop'"
+              [disabled]="atPropCap()"
+              [attr.title]="atPropCap() ? 'Prop limit reached (' + maxProps + ')' : null"
+              (click)="addProp(p)">
+        <img class="prop-thumb" [src]="scenes.propUrl(p.id)" alt=""
+             aria-hidden="true" loading="lazy" decoding="async" draggable="false" />
+        <span class="prop-name" [attr.title]="p.displayName">{{ p.displayName }}</span>
+      </button>
+    </div>
+    <p class="prop-cap-note" data-testid="prop-cap-note" role="status" aria-live="polite"
+       *ngIf="atPropCap()">Prop limit reached ({{ maxProps }}). Remove a prop to add another.</p>
+  </div>
+
+  <!-- Placed props: per-row Move control (arrow keys nudge, +/- resize,
+       Delete removes — the accessible name spells out the contract) plus an
+       explicit Remove button for pointer users. -->
+  <div class="picker-section" role="group" aria-label="Placed props"
+       *ngIf="placed().length > 0">
+    <h3 class="picker-heading" aria-hidden="true">Placed</h3>
+    <ul class="placed-list">
+      <li *ngFor="let row of placed(); let i = index" class="placed-row"
+          data-testid="placed-row" [attr.data-prop-id]="row.prop.propId">
+        <img *ngIf="row.url" class="prop-thumb small" [src]="row.url" alt=""
+             aria-hidden="true" loading="lazy" decoding="async" draggable="false" />
+        <span class="placed-name" [attr.title]="row.name">{{ row.name }}</span>
+        <button type="button" class="move-btn" data-testid="prop-move"
+                [attr.aria-label]="moveLabel(row.name)"
+                (keydown)="onPropKeydown($event, i)">
+          <span aria-hidden="true">✥</span>
+        </button>
+        <button type="button" class="remove-btn" data-testid="prop-remove"
+                [attr.aria-label]="'Remove ' + row.name + ' prop'"
+                (click)="removeProp(i)">
+          <span aria-hidden="true">✕</span>
+        </button>
+      </li>
+    </ul>
+  </div>
+</div>

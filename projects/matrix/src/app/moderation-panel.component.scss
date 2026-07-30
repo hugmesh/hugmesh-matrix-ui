@@ -1,0 +1,55 @@
+@use '../styles/tokens' as t;
+@use '../styles/mixins' as m;
+
+.moderation-panel {
+  @include m.page-host;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 16px;
+  color: t.$offwhite;
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  h2 {
+    margin: 0;
+    color: t.$neon;
+  }
+}
+
+.lede {
+  color: t.$light;
+  font-size: 14px;
+}
+
+.target-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin: 12px 0;
+
+  label {
+    font-size: 13px;
+    color: t.$light;
+  }
+
+  input {
+    flex: 1 1 160px;
+    min-width: 0;
+    background: rgba(t.$black, 0.4);
+    color: t.$offwhite;
+    border: 1px solid rgba(t.$neon, t.$opacity-border);
+    border-radius: t.$radius-sm;
+    padding: 6px 8px;
+  }
+}
+
+.signed-out {
+  color: t.$muted;
+  font-style: italic;
+}

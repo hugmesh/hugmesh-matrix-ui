@@ -1,0 +1,12 @@
+.character-panel{display:flex;align-items:flex-end;justify-content:center;flex:none;width:176px;padding:8px;border-left:1px solid #eee}
+// The stage is the positioning context: the mouth overlay is absolutely placed
+// OVER the 160x160 portrait, so its 0,0 origin + in-viewBox ellipse anchor land
+// on the character's face (without this, left/top are inert and the overlay
+// falls into normal flow BELOW the portrait).
+.character-stage{position:relative;width:160px;height:160px}
+.character-img{width:160px;height:160px;object-fit:contain;image-rendering:auto;user-select:none}
+.mouth-overlay{position:absolute;top:0;left:0;pointer-events:none}
+.voice-controls{display:flex;gap:6px}
+// Screen-reader-only aria-live status: present in the a11y tree, off-screen visually.
+.visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+@media (max-width:640px){.character-panel{display:none}}

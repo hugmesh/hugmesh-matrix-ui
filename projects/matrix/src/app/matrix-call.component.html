@@ -1,0 +1,66 @@
+<section class="hug-call" data-testid="call-view" [attr.aria-label]="title()"
+         [class.vn-mode]="mode() === 'vn-voice'">
+  <h2>{{ title() }}</h2>
+  <p>Room: <span data-testid="call-room">{{ room()?.name || '(none)' }}</span>
+     · State: <strong data-testid="call-state" role="status" aria-live="polite"
+                      [attr.aria-label]="'Call state: ' + state()">{{ state() }}</strong></p>
+  <div class="actions" role="group" aria-label="Call controls" aria-describedby="call-help">
+    <button type="button" data-testid="call-start" aria-describedby="call-help"
+            (click)="start()" [disabled]="!room() || state() !== 'idle'">Start call</button>
+    <button type="button" data-testid="call-join" aria-describedby="call-help"
+            (click)="join()" [disabled]="!room() || state() !== 'ringing'">Join call</button>
+    <button type="button" data-testid="call-hangup" aria-describedby="call-help"
+            (click)="hangup()" [disabled]="state() === 'idle'">Hang up</button>
+  </div>
+  <p id="call-help" class="field-help" data-testid="call-help" role="status" aria-live="polite">{{ callHelp }}</p>
+
+  <!-- VN VOICE MODE: the stage replaces the video tiles. Same call, same
+       signalling — the media surface is the two participants' characters,
+       mouths driven live from each audio stream's amplitude. -->
+  <div class="vn-call" data-testid="vn-call" *ngIf="mode() === 'vn-voice'; else videoTiles">
+    <div class="vn-stage-host">
+      <hug-vn-stage [scene]="sceneState()?.sceneId ?? null"
+                     [props]="sceneState()?.props ?? []"
+                     [participants]="stageParticipants()">
+        <!-- Newest room message, typewriter-revealed (CSS steps(); the trackBy
+             recreates the node per eventId so the reveal restarts per message;
+             prefers-reduced-motion shows it instantly). The wrapper only exists
+             while there IS a line, so the stage's :empty dialogue-box rule
+             still hides an idle box. -->
+        <div class="dialogue-live" *ngIf="dialogue()" role="status" aria-live="polite">
+          <p class="dialogue-line" data-testid="dialogue-line"
+             *ngFor="let line of dialogueLines(); trackBy: trackDialogue">
+            <!-- Sender plate is CSS-ellipsized; the title carries the full name.
+                 body is clamped to MAX_DIALOGUE_CHARS — title + aria-label keep
+                 the untruncated text reachable for pointer + SR users. -->
+            <strong class="dialogue-sender" data-testid="dialogue-sender"
+                    [attr.title]="line.senderName">{{ line.senderName }}</strong>
+            <span class="dialogue-text" data-testid="dialogue-text"
+                  [attr.title]="line.fullBody"
+                  [attr.aria-label]="line.body === line.fullBody ? null : line.fullBody">{{ line.body }}</span>
+          </p>
+        </div>
+      </hug-vn-stage>
+    </div>
+
+    <!-- The remote peer's voice still has to PLAY — there's just no tile. -->
+    <audio #remoteAudio data-testid="remote-audio" autoplay></audio>
+
+    <!-- Shared scene decoration, editable mid-call by either side; writes the
+         systems.hugmesh.vn.scene room state and re-emits optimistically so
+         the stage above updates instantly. -->
+    <details class="scene-tools" data-testid="scene-tools">
+      <summary>Scene &amp; props</summary>
+      <hug-vn-scene-controls [roomId]="room()?.roomId ?? ''"
+                              (stateChange)="onSceneEdited($event)"></hug-vn-scene-controls>
+    </details>
+  </div>
+
+  <!-- Default video mode: the original camera tiles, unchanged. -->
+  <ng-template #videoTiles>
+    <div class="videos">
+      <video #local data-testid="local-video" aria-label="Your camera" autoplay playsinline muted></video>
+      <video #remote data-testid="remote-video" aria-label="Remote participant" autoplay playsinline></video>
+    </div>
+  </ng-template>
+</section>

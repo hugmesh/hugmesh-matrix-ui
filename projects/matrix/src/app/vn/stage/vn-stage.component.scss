@@ -1,0 +1,170 @@
+@use '../../../styles/tokens' as t;
+@use '../../../styles/mixins' as m;
+
+// The letterbox: black bars around a 16:9 stage frame whatever the host box.
+.vn-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: #000;
+  border-radius: t.$radius-md;
+  overflow: hidden;
+}
+
+// The 16:9 stage itself. aspect-ratio + max constraints letterbox inside the
+// flex-centred wrapper; the frame's own dark backdrop is the null-scene look.
+.stage-frame {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  overflow: hidden;
+  background: linear-gradient(180deg, var(--hug-bg-1) 0%, var(--hug-bg-0) 100%);
+}
+
+// 1. Scene background fills the frame (same 16:9, so cover === contain).
+.scene-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  user-select: none;
+  z-index: t.$z-background;
+}
+
+// 2. Props: centre-anchored at the shared state's normalized coords.
+.prop-layer {
+  position: absolute;
+  inset: 0;
+  z-index: t.$z-content;
+  pointer-events: none;
+}
+.stage-prop {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  user-select: none;
+}
+
+// 3. Sprites: bottom-aligned figures at their VN layout slots. The base
+// transform centres each sprite on its left%; `speaking` adds the gentle rise.
+.sprite-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+.stage-sprite {
+  position: absolute;
+  bottom: 4%;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 72%;
+  transform: translateX(-50%);
+  transition: transform t.$transition-base, filter t.$transition-base;
+  will-change: transform;
+  z-index: 2;
+
+  &.back-row {
+    height: 62%;
+    bottom: 12%;
+    z-index: 1;
+  }
+
+  // Non-speakers dim while someone else speaks — a SATURATION cue (not
+  // motion), so it stays under prefers-reduced-motion.
+  &.dimmed {
+    filter: saturate(0.55) brightness(0.82);
+  }
+
+  // The ACTIVE SPEAKER: full saturation + a gentle rise, above the others.
+  &.speaking {
+    transform: translateX(-50%) translateY(-2.5%);
+    z-index: 3;
+  }
+}
+
+// The positioning context for the mouth overlay (same pattern as
+// hug-character-panel's .character-stage: without it the overlay's
+// absolute inset is inert and it drops out of the portrait).
+.sprite-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: flex-end;
+}
+.sprite-img {
+  height: 100%;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+  user-select: none;
+}
+// Side characters mirror so they face INTO the scene; only the body flips —
+// the name plate below stays readable.
+.flipped .sprite-body {
+  transform: scaleX(-1);
+}
+
+// Classic VN name plate under each sprite. Ellipsized (LIMIT: 16rem — a
+// hostile display name never widens the plate); full name rides the title attr.
+.name-plate {
+  @include m.card-surface;
+  margin-top: 0.25rem;
+  padding: 0.15rem 0.9rem;
+  font-family: t.$font-sans;
+  font-size: 0.85rem;
+  font-weight: bold;
+  color: var(--hug-text);
+  white-space: nowrap;
+  max-width: 16rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+  // Phone-width stages: tighter plates so 2–4 sprites' plates don't collide.
+  @media (max-width: t.$bp-sm) {
+    max-width: 7rem;
+    font-size: 0.7rem;
+    padding: 0.1rem 0.5rem;
+  }
+}
+
+// 4. Classic VN dialogue/caption box along the bottom (content-projected).
+// :empty hides it when the host projects nothing.
+.dialogue-box {
+  position: absolute;
+  left: 3%;
+  right: 3%;
+  bottom: 3%;
+  z-index: 4;
+  min-height: 3.5rem;
+  max-height: 34%;
+  overflow-y: auto;
+  padding: 0.75rem 1.1rem;
+  @include m.glass-float;
+  color: var(--hug-text);
+  font-family: t.$font-sans;
+  line-height: 1.45;
+
+  &:empty {
+    display: none;
+  }
+}
+
+// Respect prefers-reduced-motion: no rise, no transitions — the dim/saturate
+// cue (non-motion) still marks the active speaker.
+@media (prefers-reduced-motion: reduce) {
+  .stage-sprite {
+    transition: none;
+
+    &.speaking {
+      transform: translateX(-50%);
+    }
+  }
+}

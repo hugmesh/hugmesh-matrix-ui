@@ -1,0 +1,34 @@
+<section class="search-view" data-testid="search-view" aria-label="Message search">
+  <h3 id="search-heading">Search messages</h3>
+  <form class="bar" role="search" aria-labelledby="search-heading" (submit)="$event.preventDefault(); runSearch(true)">
+    <label class="sr" for="search-input">Search messages</label>
+    <input id="search-input" data-testid="input-search" [(ngModel)]="term" name="term"
+           placeholder="Search…" aria-describedby="search-help" (keyup.enter)="runSearch(true)" />
+    <button type="submit" data-testid="btn-search" aria-describedby="search-help">Search</button>
+  </form>
+  <p id="search-help" class="field-help" data-testid="search-help">
+    Type words to find in message text, then press Enter or Search.
+    {{ roomScope() ? 'Results are limited to this room.' : 'Results cover every room you have joined.' }}
+  </p>
+  <p *ngIf="roomScope()" class="scope" data-testid="search-scope"
+     role="status" aria-live="polite">Scoped to room {{ roomScope() }}</p>
+
+  <p class="count" data-testid="search-result-count" role="status" aria-live="polite">{{ count() }} results</p>
+
+  <ul class="results" aria-label="Search results">
+    <li *ngFor="let r of results()" class="result"
+        [attr.data-testid]="'search-result-' + r.event.eventId">
+      <a [routerLink]="['/rooms', r.roomId]" [queryParams]="{ event: r.event.eventId }">
+        <span class="sender">{{ r.event.senderDisplayName || r.event.sender }}</span>
+        <span class="room">in {{ r.roomId }}</span>
+        <span class="snippet">{{ r.event.body }}</span>
+      </a>
+    </li>
+  </ul>
+
+  <button *ngIf="nextBatch()" type="button" data-testid="btn-search-more"
+          aria-describedby="search-more-help" (click)="runSearch(false)">Load more</button>
+  <p *ngIf="nextBatch()" id="search-more-help" class="field-help" data-testid="search-more-help">
+    Fetches the next page of older matching messages and adds them to the list above.
+  </p>
+</section>

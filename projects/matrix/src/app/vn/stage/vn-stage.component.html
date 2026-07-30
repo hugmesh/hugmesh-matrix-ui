@@ -1,0 +1,61 @@
+<!-- The letterbox: black bars around a 16:9 stage frame whatever the host box. -->
+<div class="vn-stage" data-testid="vn-stage">
+  <div class="stage-frame">
+    <!-- 1. Scene background — static pack-authored SVG via <img src> (relative
+         asset URL from the manifest; no user content, no innerHTML). No scene
+         chosen / unknown id ⇒ no img at all: the frame's own dark backdrop
+         shows (fail-soft). Decorative: the scene is ambience, alt="". -->
+    <img *ngIf="backgroundUrl() as bg" class="scene-bg" data-testid="scene-bg"
+         [src]="bg" alt="" aria-hidden="true" draggable="false" decoding="async" />
+
+    <!-- 2. Prop layer — decorative set dressing, positioned by the shared
+         state's normalized 0..1 coords (centre-anchored via translate).
+         Unknown prop ids were already dropped (fail-soft). -->
+    <div class="prop-layer" aria-hidden="true">
+      <img *ngFor="let p of placedProps()" class="stage-prop" data-testid="stage-prop"
+           [src]="p.url" alt="" draggable="false" decoding="async"
+           [attr.data-prop-id]="p.prop.propId"
+           [style.left.%]="p.prop.x * 100"
+           [style.top.%]="p.prop.y * 100"
+           [style.width.%]="p.widthPct" />
+    </div>
+
+    <!-- 3. Character sprites — up to 4, classic VN blocking, bottom-aligned.
+         The active speaker rises + keeps full saturation; others dim (the
+         saturation cue is not motion, so it survives prefers-reduced-motion,
+         which only disables the rise). Each sprite is an <img> (blob:/data:
+         URL the CALLER resolved) — the same script-inert XSS boundary as
+         hug-character-panel; the mouth overlay is a SEPARATE sibling layer. -->
+    <div class="sprite-layer">
+      <figure *ngFor="let s of sprites(); trackBy: trackSprite"
+              class="stage-sprite" data-testid="stage-sprite"
+              [class.speaking]="s.participant.speaking"
+              [class.dimmed]="s.dimmed"
+              [class.back-row]="s.back"
+              [class.flipped]="s.flip"
+              [style.left.%]="s.xPct"
+              [attr.data-user-id]="s.participant.userId">
+        <div class="sprite-body">
+          <img class="sprite-img" data-testid="sprite-img"
+               [src]="s.participant.imgUrl" [attr.alt]="alt(s.participant)"
+               draggable="false" decoding="async" />
+          <!-- Amplitude mouth overlay (extracted hug-character-panel technique):
+               only while this sprite speaks; openness 0..1 scales the ellipse. -->
+          <hug-mouth-overlay *ngIf="s.participant.speaking"
+                              [openness]="s.participant.openness" />
+        </div>
+        <!-- Plate is CSS-ellipsized (max-width); the title carries the full name. -->
+        <figcaption class="name-plate" data-testid="name-plate"
+                    [attr.title]="plateName(s.participant)">
+          {{ plateName(s.participant) }}<span class="sr" *ngIf="s.participant.speaking"> (speaking)</span>
+        </figcaption>
+      </figure>
+    </div>
+
+    <!-- 4. Classic VN dialogue/caption bar — content-projected by the host
+         (captions, live transcript, message text…). :empty hides the box. -->
+    <div class="dialogue-box" data-testid="dialogue-box">
+      <ng-content></ng-content>
+    </div>
+  </div>
+</div>

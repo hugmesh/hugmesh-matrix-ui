@@ -1,0 +1,30 @@
+.reaction-picker {
+  display: flex;
+  gap: 2px;
+  flex-wrap: wrap;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  padding: 4px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.reaction-picker .emoji-btn {
+  font-size: 18px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+
+  &:hover {
+    background: #eee;
+  }
+
+  // The caller's own active reaction reads as checked; give it a visible
+  // outline too so the state isn't conveyed by the a11y tree alone.
+  &[aria-checked='true'] {
+    outline: 2px solid var(--hug-accent, #7c4dff);
+    outline-offset: -2px;
+  }
+}

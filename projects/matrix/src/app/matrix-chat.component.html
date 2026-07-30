@@ -1,0 +1,29 @@
+<section class="hug-matrix" data-testid="matrix-view" aria-label="Matrix chat">
+  <div class="topbar">
+    <h2>Matrix</h2>
+    <p data-testid="matrix-whoami" *ngIf="userId() as id">Signed in as {{ id }}</p>
+    <nav class="nav" aria-label="Matrix sections" aria-describedby="matrix-nav-help">
+      <a [routerLink]="['/search']">Search</a>
+      <a [routerLink]="['/settings']">Settings</a>
+      <a [routerLink]="['/moderation']">Moderation</a>
+      <a [routerLink]="['/call']" [queryParams]="{ room: current()?.roomId }">Call</a>
+    </nav>
+    <p id="matrix-nav-help" class="section-help" data-testid="matrix-nav-help">
+      Jump between sections: Search messages, your Settings, Moderation and safety tools, and a video
+      Call in the selected room.
+    </p>
+  </div>
+
+  <div class="shell" data-testid="matrix-shell">
+    <hug-room-list
+      [rooms]="rooms" [selectedRoomId]="current()?.roomId ?? null"
+      (roomSelected)="select($event)"
+      (roomsChanged)="onRooms($event)"></hug-room-list>
+
+    <hug-room-view *ngIf="current() as room"
+      [roomIdInput]="room.roomId"
+      [syncRoom]="currentSync"></hug-room-view>
+
+    <p *ngIf="!current()" class="empty" role="status">Select a room to start chatting.</p>
+  </div>
+</section>

@@ -1,0 +1,35 @@
+<section class="moderation-panel" data-testid="moderation-panel" aria-labelledby="mod-panel-h">
+  <header>
+    <h2 id="mod-panel-h">Moderation &amp; safety</h2>
+    <a [routerLink]="['/']"><span aria-hidden="true">←</span> Back to chat</a>
+  </header>
+
+  <p class="lede">
+    Your available actions depend on your role. Everyone can block or mute a user and
+    recommend an instance block; moderators and admins see additional tools below.
+  </p>
+
+  <div class="target-row" *ngIf="session.isUser()">
+    <label for="mod-panel-target">User to act on</label>
+    <input id="mod-panel-target" data-testid="mod-panel-target" [(ngModel)]="target"
+           placeholder="@user:server" aria-describedby="mod-panel-target-help" />
+    <p id="mod-panel-target-help" class="field-help" data-testid="mod-panel-target-help">
+      The full Matrix id of the person the actions below should apply to, e.g.
+      <code>&#64;user:server</code>.
+    </p>
+    <label for="mod-panel-instance">Instance (optional)</label>
+    <input id="mod-panel-instance" data-testid="mod-panel-instance" [(ngModel)]="instance"
+           placeholder="evil.test" aria-describedby="mod-panel-instance-help" />
+    <p id="mod-panel-instance-help" class="field-help" data-testid="mod-panel-instance-help">
+      Override the server an instance-level action targets. Leave blank to use the server from the
+      user id above.
+    </p>
+  </div>
+
+  <hug-role-actions *ngIf="session.isUser()"
+    [inline]="true" [target]="target" [instance]="instance || undefined"></hug-role-actions>
+
+  <p *ngIf="!session.isUser()" class="signed-out" role="status" data-testid="mod-panel-signedout">
+    Sign in to block users or recommend an instance block.
+  </p>
+</section>

@@ -1,0 +1,34 @@
+/* Per-user chat theming: every var(--hugm-chat-*, fallback) below inherits from
+ * the nearest theme root (see theme/chat-theme.service.ts). The fallbacks are
+ * the stock values, so with NO theme set this renders byte-identically to the
+ * pre-theming stylesheet. */
+.timeline{display:flex;flex-direction:column;min-height:0;font-family:var(--hugm-chat-font-family, inherit)}
+.log{list-style:none;margin:0;padding:0;overflow:auto;flex:1;background-color:var(--hugm-chat-bg, transparent);background-image:var(--hugm-chat-bg-image, none);background-size:var(--hugm-chat-bg-size, auto)}
+.paginate{align-self:center;margin:4px;font-size:12px}
+.day-separator{text-align:center;color:#888;font-size:12px;margin:6px 0}
+.event-body{display:flex;gap:var(--hugm-chat-event-gap, 8px);padding:var(--hugm-chat-event-pad, 4px 8px)}
+.avatar{width:28px;height:28px;border-radius:50%;background:#ddd center/cover no-repeat;flex:none}
+/* LIMIT: bubbles cap at 46rem and long unbroken tokens wrap (overflow-wrap) —
+ * an unbounded one-word message can never force horizontal scroll; min-width:0
+ * lets the flex child actually shrink below its content width on phones. */
+.bubble{display:flex;flex-direction:column;gap:2px;min-width:0;max-width:46rem;overflow-wrap:anywhere;background:var(--hugm-chat-bubble-theirs, transparent);color:var(--hugm-chat-bubble-theirs-text, inherit);border-radius:var(--hugm-chat-bubble-radius, 0);padding:var(--hugm-chat-bubble-pad, 0)}
+.bubble.mine{background:var(--hugm-chat-bubble-mine, transparent);color:var(--hugm-chat-bubble-mine-text, inherit)}
+.sender{font-weight:600;font-size:13px;color:var(--hugm-chat-accent, inherit)}
+/* Radio-provenance chip, following the .pill/.badge chip conventions. */
+.mesh-badge{font-size:11px;border:1px solid #b7a7e6;border-radius:12px;background:#f0ebfb;color:#4b3a7a;padding:0 6px;align-self:flex-start;white-space:nowrap}
+.reply-quote{font-size:12px;color:#666;border-left:2px solid #ccc;padding-left:6px}
+.edited-marker,.redacted-marker{color:#999;font-size:11px}
+.media{max-width:240px;max-height:240px;border-radius:6px}
+// MSC2545 stickers render smaller than inline images and keep transparency
+// (no bubble-like rounding — a sticker is its own visual object).
+.media.sticker{max-width:160px;max-height:160px;border-radius:0;background:transparent;display:block}
+.reactions{display:flex;gap:4px;flex-wrap:wrap}
+.pill{font-size:12px;border:1px solid #ccc;border-radius:12px;background:#f4f4f4;cursor:pointer;padding:0 6px}
+.pill.mine{background:#d8e8ff;border-color:#7aa7ff}
+.thread-summary{font-size:12px;color:#3a6df0}
+.actions{display:none;gap:4px;margin-top:2px}
+.event:hover .actions{display:flex}
+.actions button{font-size:11px}
+.event.redacted .text{display:none}
+.read-receipts{display:flex;justify-content:flex-end;gap:2px;margin-top:2px;flex-wrap:wrap}
+.receipt{width:16px;height:16px;border-radius:50%;background:#cfd8e6 center/cover no-repeat;border:1px solid #fff;box-shadow:0 0 0 1px #b7c2d2;font-size:9px;line-height:14px;text-align:center;color:#33465e;flex:none}

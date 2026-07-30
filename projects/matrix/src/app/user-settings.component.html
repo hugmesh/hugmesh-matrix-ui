@@ -1,0 +1,249 @@
+<section class="user-settings" data-testid="user-settings" aria-label="User settings">
+  <header>
+    <h3>User settings</h3>
+    <a [routerLink]="['/']"><span aria-hidden="true">←</span> Back to chat</a>
+  </header>
+
+  <p class="uid">Signed in as <strong>{{ userId() }}</strong></p>
+
+  <label for="us-display-name">Display name
+    <input id="us-display-name" data-testid="input-display-name" [(ngModel)]="displayName"
+           aria-describedby="us-display-name-help" />
+  </label>
+  <p id="us-display-name-help" class="field-help" data-testid="us-display-name-help">
+    The name other people see next to your messages across every room.
+  </p>
+  <button type="button" data-testid="btn-save-profile"
+          aria-describedby="us-save-profile-help" (click)="saveProfile()" [disabled]="busy()">Save profile</button>
+  <p id="us-save-profile-help" class="field-help" data-testid="us-save-profile-help">
+    Saves your display name so it updates everywhere you appear.
+  </p>
+
+  <hr />
+  <label for="us-avatar">Avatar
+    <input id="us-avatar" type="file" data-testid="input-avatar-file" accept="image/*"
+           aria-describedby="us-avatar-help" (change)="onAvatar($event)" />
+  </label>
+  <p id="us-avatar-help" class="field-help" data-testid="us-avatar-help">
+    Choose a profile picture. It is uploaded and applied as soon as you pick a file.
+  </p>
+
+  <hr />
+  <label for="us-presence">Presence
+    <select id="us-presence" data-testid="select-presence" [(ngModel)]="presence"
+            aria-describedby="us-presence-help">
+      <option value="online">Online</option>
+      <option value="unavailable">Away</option>
+      <option value="offline">Offline</option>
+    </select>
+  </label>
+  <p id="us-presence-help" class="field-help" data-testid="us-presence-help">
+    Controls the availability dot others see beside your name: Online, Away, or Offline (appear
+    signed out).
+  </p>
+  <label for="us-status-msg">Status message
+    <input id="us-status-msg" data-testid="input-status-msg" [(ngModel)]="statusMsg" placeholder="What's happening?"
+           aria-describedby="us-status-msg-help" />
+  </label>
+  <p id="us-status-msg-help" class="field-help" data-testid="us-status-msg-help">
+    An optional short note shown with your presence, for example "in a meeting".
+  </p>
+  <button type="button" aria-describedby="us-presence-save-help" (click)="savePresence()">Update presence</button>
+  <p id="us-presence-save-help" class="field-help" data-testid="us-presence-save-help">
+    Applies your chosen presence and status message for everyone to see.
+  </p>
+
+  <hr />
+  <section class="chat-appearance" data-testid="chat-appearance" aria-labelledby="us-theme-heading">
+    <h4 id="us-theme-heading">Chat appearance</h4>
+    <p id="us-theme-help" class="section-help" data-testid="us-theme-help">
+      Personalise how chat looks for you: pick a preset, then fine-tune colors, bubbles, font,
+      density and background. Saved to your account, visible only to you. Changes apply immediately.
+    </p>
+
+    <div class="preset-row" role="group" aria-label="Theme preset" aria-describedby="us-theme-help">
+      <button *ngFor="let p of presets" type="button" class="preset-swatch"
+              [class.selected]="themeActive && themeCfg.preset === p.id"
+              [attr.aria-pressed]="themeActive && themeCfg.preset === p.id"
+              [attr.aria-label]="'Use the ' + p.label + ' theme preset'"
+              [attr.data-testid]="'theme-preset-' + p.id"
+              (click)="selectPreset(p.id)">
+        <span class="dot" aria-hidden="true"
+              [style.background]="p.accent" [style.border-color]="p.bubbleTheirs"></span>{{ p.label }}
+      </button>
+    </div>
+
+    <div class="theme-colors">
+      <label for="us-theme-accent">Accent color
+        <input id="us-theme-accent" type="color" data-testid="input-theme-accent"
+               [value]="themeCfg.accent" aria-describedby="us-theme-accent-help"
+               (input)="previewColor('accent', $event)" (change)="commitColor('accent', $event)" />
+      </label>
+      <label for="us-theme-bubble-mine">Your bubble color
+        <input id="us-theme-bubble-mine" type="color" data-testid="input-theme-bubble-mine"
+               [value]="themeCfg.bubbleMine" aria-describedby="us-theme-bubbles-help"
+               (input)="previewColor('bubbleMine', $event)" (change)="commitColor('bubbleMine', $event)" />
+      </label>
+      <label for="us-theme-bubble-theirs">Others' bubble color
+        <input id="us-theme-bubble-theirs" type="color" data-testid="input-theme-bubble-theirs"
+               [value]="themeCfg.bubbleTheirs" aria-describedby="us-theme-bubbles-help"
+               (input)="previewColor('bubbleTheirs', $event)" (change)="commitColor('bubbleTheirs', $event)" />
+      </label>
+    </div>
+    <p id="us-theme-accent-help" class="field-help" data-testid="us-theme-accent-help">
+      The accent highlight color, used for sender names and the chat background pattern.
+    </p>
+    <p id="us-theme-bubbles-help" class="field-help" data-testid="us-theme-bubbles-help">
+      Fill colors for your own message bubbles and for everyone else's.
+    </p>
+
+    <label for="us-theme-shape">Bubble shape
+      <select id="us-theme-shape" data-testid="select-theme-shape" aria-describedby="us-theme-shape-help"
+              [ngModel]="themeCfg.bubbleShape" (ngModelChange)="updateTheme({ bubbleShape: $event })">
+        <option value="rounded">Rounded</option>
+        <option value="square">Square</option>
+        <option value="minimal">Minimal (no bubbles)</option>
+      </select>
+    </label>
+    <p id="us-theme-shape-help" class="field-help" data-testid="us-theme-shape-help">
+      Rounded or square message bubbles, or Minimal for plain text with no bubble fill.
+    </p>
+
+    <label for="us-theme-font">Chat font
+      <select id="us-theme-font" data-testid="select-theme-font" aria-describedby="us-theme-font-help"
+              [ngModel]="themeCfg.font" (ngModelChange)="updateTheme({ font: $event })">
+        <option value="system">System</option>
+        <option value="serif">Serif</option>
+        <option value="rounded">Rounded</option>
+        <option value="mono">Monospace</option>
+      </select>
+    </label>
+    <p id="us-theme-font-help" class="field-help" data-testid="us-theme-font-help">
+      The typeface used for messages and the composer.
+    </p>
+
+    <label for="us-theme-density">Density
+      <select id="us-theme-density" data-testid="select-theme-density" aria-describedby="us-theme-density-help"
+              [ngModel]="themeCfg.density" (ngModelChange)="updateTheme({ density: $event })">
+        <option value="cozy">Cozy</option>
+        <option value="compact">Compact</option>
+      </select>
+    </label>
+    <p id="us-theme-density-help" class="field-help" data-testid="us-theme-density-help">
+      Cozy keeps comfortable spacing between messages; Compact fits more on screen.
+    </p>
+
+    <label for="us-theme-chatbg">Chat background
+      <select id="us-theme-chatbg" data-testid="select-theme-chatbg" aria-describedby="us-theme-chatbg-help"
+              [ngModel]="themeCfg.chatBackground" (ngModelChange)="updateTheme({ chatBackground: $event })">
+        <option value="none">None</option>
+        <option value="dots">Dots</option>
+        <option value="grid">Grid</option>
+        <option value="stars">Stars</option>
+      </select>
+    </label>
+    <p id="us-theme-chatbg-help" class="field-help" data-testid="us-theme-chatbg-help">
+      A subtle pattern behind the message timeline, tinted with your accent color.
+    </p>
+
+    <div class="theme-preview" data-testid="theme-preview" role="img"
+         aria-label="Preview of your chat theme: one received and one sent message bubble">
+      <div class="preview-bubble theirs" data-testid="preview-bubble-theirs">
+        <span class="preview-sender" aria-hidden="true">HugMesh</span>
+        Hey! Trying out a new look?
+      </div>
+      <div class="preview-bubble mine" data-testid="preview-bubble-mine">Yes — this one's mine.</div>
+    </div>
+
+    <button type="button" data-testid="btn-theme-reset" aria-describedby="us-theme-reset-help"
+            (click)="resetTheme()">Reset chat appearance</button>
+    <p id="us-theme-reset-help" class="field-help" data-testid="us-theme-reset-help">
+      Returns chat to the default look and removes your saved theme from this account.
+    </p>
+  </section>
+
+  <hr />
+  <section class="mesh-devices" data-testid="mesh-devices" aria-labelledby="us-mesh-heading">
+    <h4 id="us-mesh-heading">Mesh devices</h4>
+    <p id="us-mesh-help" class="section-help" data-testid="us-mesh-help">
+      Register your Meshtastic radio's node id so messages from that radio appear under your name in
+      mesh-enabled rooms. Caution: LoRa node ids are not cryptographically authenticated — any radio
+      can transmit as any node id.
+    </p>
+
+    <!-- Shared describedby targets for the per-device controls: one concise
+         explanation each for visibility and release, announced from every row
+         without repeating copy per device. -->
+    <p id="us-mesh-visibility-help" class="field-help" data-testid="us-mesh-visibility-help">
+      Visibility controls who can see this radio's status: Private is only you; Friends lets your
+      friends see it; Channels shows it to members of the mesh-enabled rooms it participates in.
+    </p>
+    <p id="us-mesh-release-help" class="field-help" data-testid="us-mesh-release-help">
+      Releasing a device stops linking its radio messages to your name; someone else can then claim
+      the node id.
+    </p>
+
+    <ul class="mesh-list" data-testid="mesh-device-list" aria-label="Your registered mesh devices">
+      <li *ngFor="let d of meshDevices(); trackBy: trackMeshDevice" class="mesh-row"
+          [class.revoked]="d.state === 'revoked'" [attr.data-testid]="'mesh-device-' + d.id">
+        <div class="mesh-id">
+          <span class="mesh-label">{{ meshDeviceName(d) }}</span>
+          <code class="mesh-node">{{ d.nodeId }}</code>
+          <!-- REVOKED rows stay listed (clearly flagged, with the server's
+               reason when present): visibility is frozen, release stays. -->
+          <span *ngIf="d.state === 'revoked'" class="mesh-revoked"
+                [attr.data-testid]="'mesh-revoked-' + d.id">
+            Revoked{{ d.revokeReason ? ' — ' + d.revokeReason : '' }}
+          </span>
+        </div>
+        <p *ngIf="meshStatusLine(d)" class="mesh-status field-help"
+           [attr.data-testid]="'mesh-status-' + d.id">{{ meshStatusLine(d) }}</p>
+        <div class="mesh-actions">
+          <label [attr.for]="'us-mesh-visibility-' + d.id" class="mesh-visibility">Visibility
+            <select [id]="'us-mesh-visibility-' + d.id" [attr.data-testid]="'select-mesh-visibility-' + d.id"
+                    [value]="d.visibility" [disabled]="d.state === 'revoked'"
+                    [attr.aria-label]="'Visibility for mesh device ' + meshDeviceName(d)"
+                    aria-describedby="us-mesh-visibility-help"
+                    (change)="onMeshVisibilityChange(d, $event)">
+              <option value="private">Private</option>
+              <option value="friends">Friends</option>
+              <option value="channels">Channels</option>
+            </select>
+          </label>
+          <button type="button" [attr.data-testid]="'btn-mesh-release-' + d.id"
+                  [attr.aria-label]="'Release mesh device ' + meshDeviceName(d)"
+                  aria-describedby="us-mesh-release-help"
+                  (click)="releaseMeshDevice(d)">Release</button>
+        </div>
+      </li>
+    </ul>
+    <p *ngIf="!meshDevices().length" class="field-help" data-testid="mesh-device-empty">
+      No mesh devices registered yet.
+    </p>
+
+    <label for="us-mesh-node">Node id
+      <input id="us-mesh-node" data-testid="input-mesh-node" [(ngModel)]="meshNodeId"
+             placeholder="!a1b2c3d4" aria-describedby="us-mesh-node-help" />
+    </label>
+    <p id="us-mesh-node-help" class="field-help" data-testid="us-mesh-node-help">
+      Your radio's 8-hex-digit Meshtastic node id, with or without the leading "!" — for example
+      a1b2c3d4 or !A1B2C3D4.
+    </p>
+    <label for="us-mesh-label">Label (optional)
+      <input id="us-mesh-label" data-testid="input-mesh-label" [(ngModel)]="meshLabel" maxlength="64"
+             placeholder="e.g. backpack radio" aria-describedby="us-mesh-label-help" />
+    </label>
+    <p id="us-mesh-label-help" class="field-help" data-testid="us-mesh-label-help">
+      A name for this radio, shown only in this list (up to 64 characters).
+    </p>
+    <button type="button" data-testid="btn-mesh-claim" aria-describedby="us-mesh-claim-help"
+            (click)="claimMeshDevice()">Register device</button>
+    <p id="us-mesh-claim-help" class="field-help" data-testid="us-mesh-claim-help">
+      Claims this node id for your account so its radio messages are shown under your name.
+    </p>
+    <p *ngIf="meshError()" class="mesh-error" role="status" aria-live="polite"
+       data-testid="mesh-error">{{ meshError() }}</p>
+  </section>
+
+  <p *ngIf="status()" class="status" role="status" aria-live="polite" data-testid="user-settings-status">{{ status() }}</p>
+</section>

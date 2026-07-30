@@ -1,0 +1,61 @@
+<section class="chat3d-host" data-testid="chat3d-host" aria-label="3D chat room">
+  <header class="chat3d-bar">
+    <a [routerLink]="['/rooms', roomId]" data-testid="btn-chat3d-back">
+      <span aria-hidden="true">←</span> Back to room
+    </a>
+    <span *ngIf="!ready()" class="loading" data-testid="chat3d-loading" role="status" aria-live="polite">
+      Loading the 3D room…
+    </span>
+    <span *ngIf="vrActive()" class="vr-badge" data-testid="chat3d-vr-badge" role="status">VR session active</span>
+    <button type="button" data-testid="btn-chat3d-media-panel"
+            [attr.aria-expanded]="mediaPanelOpen()"
+            (click)="toggleMediaPanel()">Channel media</button>
+    <button type="button" data-testid="btn-chat3d-enter-vr"
+            [disabled]="!ready()" aria-describedby="c3d-vr-help"
+            (click)="enterVr()">Enter VR</button>
+  </header>
+  <p id="c3d-vr-help" class="field-help" data-testid="c3d-vr-help">
+    Starts an immersive WebXR session in a connected headset's browser (e.g. Meta Quest). Without a
+    headset the room stays on screen with mouse/keyboard controls.
+  </p>
+
+  <!-- Honest A/V capability notes (turnAvailable precedent): every dark or
+       degraded leg says WHY — no relay, refused mic/camera, mesh strain. -->
+  <p *ngFor="let note of avNotes()" class="field-help av-note" data-testid="chat3d-av-note"
+     role="status" aria-live="polite">
+    {{ note }}
+  </p>
+  <p *ngIf="avatarNote()" class="field-help" data-testid="chat3d-avatar-note" role="status" aria-live="polite">
+    {{ avatarNote() }}
+  </p>
+  <p *ngIf="disabledNote()" class="field-help disabled-note" data-testid="chat3d-disabled-note"
+     role="status" aria-live="polite">
+    {{ disabledNote() }}
+  </p>
+  <p *ngIf="activatedLabel()" class="field-help" data-testid="chat3d-activated" role="status" aria-live="polite">
+    Selected on a surface: {{ activatedLabel() }}
+  </p>
+
+  <div class="chat3d-main">
+    <!-- The embedded Godot room (hugmesh-games wasm bundle, mode=matrix).
+         allow: XR + mic + camera + autoplay per the platform 3D-room contract.
+         NO sandbox attribute ON PURPOSE: Godot needs full script/wasm execution;
+         the cross-origin iframe boundary (games origin ≠ this origin) plus the
+         origin-checked postMessage bridge is the isolation model. -->
+    <iframe #gameFrame
+            class="game-frame"
+            data-testid="chat3d-frame"
+            title="Shadows of the Net – 3D chat room"
+            [src]="frameSrc"
+            allow="xr-spatial-tracking; microphone; camera; autoplay"
+            referrerpolicy="no-referrer"></iframe>
+
+    <!-- Channel media → scene surfaces (placement writes; the poll above
+         pushes them into the game with texture bytes). -->
+    <hug-chat3d-media-panel *ngIf="mediaPanelOpen()"
+        data-testid="chat3d-media-panel-host"
+        [roomId]="roomId"
+        [config]="config()"
+        [activated]="activatedPlacement()"></hug-chat3d-media-panel>
+  </div>
+</section>

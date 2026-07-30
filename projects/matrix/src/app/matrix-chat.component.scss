@@ -1,0 +1,12 @@
+@use '../styles/chat-themes' as ct;
+
+// Per-user chat theming: ChatThemeService stamps data-matrix-* attributes on
+// THIS host (a registered theme root); these :host rules turn them into
+// --hugm-chat-* vars that inherit into the timeline/composer children.
+@include ct.chat-theme-host-rules;
+
+.hug-matrix{display:flex;flex-direction:column;height:100%}
+.topbar{display:flex;align-items:baseline;gap:16px;padding:6px 8px;border-bottom:1px solid #eee}
+.nav{margin-left:auto;display:flex;gap:12px}
+.shell{display:flex;flex:1;min-height:0}
+.empty{flex:1;display:flex;align-items:center;justify-content:center;color:#999}

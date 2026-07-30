@@ -1,0 +1,61 @@
+<!-- Plain <div>, NOT an <aside> landmark: the panel updates per message, and the
+     <img>'s alt is already the accessible name — a complementary landmark here would
+     re-announce the same name and turn the live-updating image into a landmark. -->
+<div class="character-panel" data-testid="character-panel"
+     *ngIf="shown() && src() as imgSrc">
+  <!-- The portrait stage: the character <img> + (drawable only) the amplitude
+       mouth overlay as a SEPARATE sibling element. -->
+  <div class="character-stage">
+    <!-- ALWAYS an <img> — a sticker mxc (blob:) or a sanitized composed SVG
+         (data:). Never [innerHTML]/bypassSecurityTrustHtml: an <img>-rendered SVG
+         is script-inert, which is the live-render XSS boundary. -->
+    <img class="character-img" data-testid="character-img"
+         [src]="imgSrc" [attr.alt]="alt()"
+         width="160" height="160" loading="lazy" decoding="async" draggable="false" />
+
+    <!-- AMPLITUDE MOUTH OVERLAY (B3 Wave A) — DRAWABLE path only, while speaking.
+         A GENERATED ellipse whose open-height scales with audio loudness. It is
+         OUR OWN trusted markup layered OVER the <img>, NOT injected into the
+         character SVG (the <img> XSS boundary stays intact). Decorative →
+         aria-hidden; reduced-motion pins openness to 0 so it stays closed/static. -->
+    <svg *ngIf="showMouth()" class="mouth-overlay" data-testid="mouth-overlay"
+         aria-hidden="true" focusable="false"
+         width="160" height="160" viewBox="0 0 160 160"
+         [style.left.px]="0" [style.top.px]="0">
+      <ellipse class="mouth-shape" data-testid="mouth-shape"
+               [attr.cx]="mouthLeftPx()" [attr.cy]="mouthTopPx()"
+               rx="11" [attr.ry]="mouthOpenPx()" />
+    </svg>
+  </div>
+
+  <!-- Voice controls: Speak (Wave A) + Record clip (Wave B). -->
+  <div class="voice-controls">
+    <!-- SPEAK control (B3 Wave A). EXPLICIT user action only (no autoplay). Disabled
+         when the dark voice flag is off / no character / no text. Keyboard-operable
+         (native <button>); accessible name flips Play↔Stop. -->
+    <button type="button" class="speak-btn" data-testid="speak-btn"
+            [disabled]="!canSpeak()"
+            [attr.aria-label]="speakLabel()"
+            [attr.aria-pressed]="speaking()"
+            (click)="speak()">
+      <span aria-hidden="true">{{ speaking() ? '⏹' : '▶' }}</span>
+    </button>
+
+    <!-- RECORD VOICE CLIP control (B3 Wave B). EXPLICIT user action only. Records
+         the character speaking the chosen text (portrait + audio → .webm) and posts
+         it to the room as an m.video message. Disabled when the dark voice flag is
+         off / no character / no text / no room / already recording. Keyboard-operable
+         (native <button>); fixed descriptive accessible name. -->
+    <button type="button" class="record-btn" data-testid="record-btn"
+            [disabled]="!canRecord()"
+            aria-label="Record and send character voice clip"
+            (click)="recordClip()">
+      <span aria-hidden="true">{{ recording() ? '●' : '⏺' }}</span>
+    </button>
+  </div>
+
+  <!-- Recording indicator: an aria-live status announced while a clip records +
+       posts. Empty (silent) when idle. Visually-hidden text-only, no autoplay. -->
+  <p class="record-status visually-hidden" data-testid="record-status"
+     role="status" aria-live="polite">{{ recordStatus() }}</p>
+</div>
