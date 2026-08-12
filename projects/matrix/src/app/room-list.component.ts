@@ -43,6 +43,11 @@ export class RoomListComponent implements OnInit {
   readonly joinError = signal('');
   /** ANNOUNCED start-DM failure / federation-rejection notice (role=alert). */
   readonly dmError = signal('');
+  /** ANNOUNCED create-room failure notice (role=alert): a malformed invitee,
+   *  a domain-lock rejection, or the server refusing the create. Distinct from
+   *  the required-name validation error (create-room-error) — before this, a
+   *  server rejection silently swallowed the whole dialog state. */
+  readonly createError = signal('');
 
   // ── Pending invites (rooms.invite — the invitee's side of an invite) ──
   /** The caller's pending room invites, loaded via a one-shot sync parse. */
@@ -59,6 +64,10 @@ export class RoomListComponent implements OnInit {
   newTopic = '';
   newAlias = '';
   newPreset: 'private_chat' | 'public_chat' | 'trusted_private_chat' = 'private_chat';
+  /** Optional comma/whitespace-separated Matrix ids to invite AT room creation
+   *  (createRoom's `invite` array) — without this, making a group chat was two
+   *  disconnected steps (create, then invite one-by-one from room settings). */
+  newInvites = '';
   dmUser = '';
 
   readonly people = computed(() => this.rooms().filter((r) => r.isDirect));
@@ -132,14 +141,47 @@ export class RoomListComponent implements OnInit {
   async create(ev: Event): Promise<void> {
     ev.preventDefault();
     this.submittedCreate.set(true);
+    this.createError.set('');
     if (!this.newName.trim()) return;
-    await this.matrix.createRoom({
-      name: this.newName.trim(),
-      topic: this.newTopic.trim() || undefined,
-      preset: this.newPreset,
-      room_alias_name: this.newAlias.trim() || undefined,
-    });
-    this.newName = this.newTopic = this.newAlias = '';
+    // Parse the optional invite list: comma/whitespace separated Matrix user
+    // ids. A malformed entry is rejected UP FRONT naming the bad value — the
+    // homeserver would 400 the whole create otherwise, losing the dialog state
+    // with a far less actionable message.
+    const invites = this.newInvites.split(/[\s,]+/).map((s) => s.trim()).filter((s) => s.length > 0);
+    const bad = invites.find((u) => !u.startsWith('@'));
+    if (bad) {
+      this.createError.set(`"${bad}" is not a Matrix user id — invitees must look like @user:server.`);
+      return;
+    }
+    // Domain-locked defence-in-depth (mirrors startDm): a PROVABLY cross-domain
+    // invitee is rejected up front with the why-notice; the homeserver MRF is
+    // the source of truth and enforces the same thing server-side.
+    if (this.domainLocked()) {
+      for (const u of invites) {
+        if (await this.isCrossDomain(u)) {
+          this.createError.set(`Cannot invite "${u}" — they are on another server. ${this.lockWhy}`);
+          return;
+        }
+      }
+    }
+    try {
+      await this.matrix.createRoom({
+        name: this.newName.trim(),
+        topic: this.newTopic.trim() || undefined,
+        preset: this.newPreset,
+        room_alias_name: this.newAlias.trim() || undefined,
+        invite: invites.length ? invites : undefined,
+      });
+    } catch (e: any) {
+      // ANNOUNCED failure — the dialog stays open with its state intact so
+      // the user can correct and retry (never silently swallowed).
+      this.createError.set(
+        `Could not create the room "${this.newName.trim()}": ${e?.message ?? e}.` +
+          (this.domainLocked() ? ` ${this.lockWhy}` : ''),
+      );
+      return;
+    }
+    this.newName = this.newTopic = this.newAlias = this.newInvites = '';
     this.submittedCreate.set(false);
     this.showCreate.set(false);
     await this.reload();

@@ -158,7 +158,9 @@ describe('MatrixService (hsproxy — no homeserver token in the browser)', () =>
   it('getPresence() maps presence + status_msg, and resolves null on a non-OK / unknown state', async () => {
     fetchSpy.and.resolveTo(jsonResponse({ presence: 'unavailable', status_msg: 'in a meeting' }));
     expect(await service.getPresence('@me:test')).toEqual({ presence: 'unavailable', statusMsg: 'in a meeting' });
-    expect(lastUrl()).toContain('/_matrix/client/v3/presence/%40me%3Atest/status');
+    // Raw-pchar spelling (enc() restores ':'/'@'): the encoded form is
+    // re-escaped by the hsproxy's URI-template factory and 500s upstream.
+    expect(lastUrl()).toContain('/_matrix/client/v3/presence/@me:test/status');
     fetchSpy.and.resolveTo(jsonResponse(null, { ok: false, status: 404 }));
     expect(await service.getPresence('@me:test')).toBeNull();
     fetchSpy.and.resolveTo(jsonResponse({ presence: 'lurking' }));
@@ -194,7 +196,9 @@ describe('MatrixService (hsproxy — no homeserver token in the browser)', () =>
     const init = lastInit();
     expect(init.method).toBe('PUT');
     expect(header('Content-Type')).toBe('application/json');
-    expect(lastUrl()).toBe(`${BFF}/bff/user/matrix/_matrix/client/v3/rooms/!r%3Atest/send/m.room.message/txn-9`);
+    // Raw-pchar room id (see enc()): '!r:test' is a valid segment as-is, and
+    // the one spelling the user-bff hsproxy forwards without re-escaping.
+    expect(lastUrl()).toBe(`${BFF}/bff/user/matrix/_matrix/client/v3/rooms/!r:test/send/m.room.message/txn-9`);
     expect(JSON.parse(String(init.body))).toEqual({ msgtype: 'm.text', body: 'hi' });
     expect(id).toBe('$evt1');
   });
@@ -252,6 +256,20 @@ describe('MatrixService (hsproxy — no homeserver token in the browser)', () =>
     expect(room.ephemeral.receipts['$e1']['m.read']).toEqual([{ user: '@b:test', ts: 42 }]);
     expect(room.unreadCount).toBe(3);
     expect(room.highlightCount).toBe(1);
+  });
+
+  it('leaves unread counts UNDEFINED for a delta without an unread_notifications block (absent ≠ zero)', async () => {
+    // Purely ephemeral deltas (typing/receipts only) may omit the block
+    // entirely — ruma-based servers skip-serialize empty blocks. Parsing that
+    // absence as 0 is what used to wipe a live badge on the next fold, so the
+    // parser must surface undefined ("unchanged"), never a fabricated 0.
+    fetchSpy.and.resolveTo(jsonResponse({
+      next_batch: 's2',
+      rooms: { join: { '!r:test': { ephemeral: { events: [{ type: 'm.typing', content: { user_ids: ['@b:test'] } }] } } } },
+    }));
+    const state = await service.sync('s1', 0);
+    expect(state.rooms['!r:test'].unreadCount).toBeUndefined();
+    expect(state.rooms['!r:test'].highlightCount).toBeUndefined();
   });
 
   it('parses rooms.invite into pending invites (name + inviter off the stripped invite_state)', async () => {
@@ -375,6 +393,110 @@ describe('MatrixService (hsproxy — no homeserver token in the browser)', () =>
     const members = await service.joinedMembers('!r:test');
     expect(members[0].displayName).toBe('山田太郎');
     expect(members[0].screenReaderName).toBe('Yamada Taro');
+  });
+
+  // ─────────────── HEROES-STYLE room names (no m.room.name ⇒ member-derived) ───────────────
+  // A room without an m.room.name state event (every fresh DM, most ad-hoc
+  // groups) used to display as its raw !opaque:id in the room list. Heroes are
+  // derived from the SAME single /state fetch the summary comes from —
+  // joined AND invited members (matching Matrix's room-name calculation), so
+  // a fresh DM whose peer hasn't accepted yet is named after the invitee, and
+  // no /joined_members request is ever made.
+  describe('joinedRoomsDetailed — heroes-style fallback naming', () => {
+    /** Route the whole joinedRoomsDetailed call graph by URL; `state` is the
+     *  room-state array (default: no m.room.name), or 'reject' for a dead
+     *  state endpoint. /joined_members stays routed ONLY so the
+     *  zero-extra-fetch assertions can count calls to it — the heroes
+     *  refactor must never make one. Everything else 404s fail-soft. */
+    function routeCalls(opts: { state?: any[] | 'reject' }): void {
+      fetchSpy.and.callFake((url: any) => {
+        const u = String(url);
+        if (u.includes('/joined_rooms')) return Promise.resolve(jsonResponse({ joined_rooms: ['!anon:test'] }));
+        if (u.includes('/account/whoami')) return Promise.resolve(jsonResponse({ user_id: '@me:test' }));
+        if (u.includes('/joined_members')) return Promise.resolve(jsonResponse({ joined: {} }));
+        if (u.endsWith('/state')) {
+          return opts.state === 'reject'
+            ? Promise.reject(new Error('state fetch down'))
+            : Promise.resolve(jsonResponse(opts.state ?? []));
+        }
+        return Promise.resolve(jsonResponse(null, { ok: false, status: 404 })); // m.direct, …
+      });
+    }
+
+    /** A raw m.room.member state event as the /state endpoint returns it. */
+    function memberEvent(userId: string, membership: 'join' | 'invite', displayname?: string): any {
+      return {
+        event_id: `$m-${userId}`, type: 'm.room.member', state_key: userId, sender: userId,
+        content: displayname === undefined ? { membership } : { membership, displayname },
+      };
+    }
+
+    function joinedMembersFetchCount(): number {
+      return fetchSpy.calls.allArgs().filter((a) => String(a[0]).includes('/joined_members')).length;
+    }
+
+    it('names an unnamed room after the other members ("A, B") excluding the caller, and sets memberCount', async () => {
+      routeCalls({ state: [
+        memberEvent('@me:test', 'join', 'Me'),
+        memberEvent('@alice:test', 'join', 'Alice'),
+        memberEvent('@bob:test', 'join', 'Bob'),
+      ] });
+      const rooms = await service.joinedRoomsDetailed();
+      expect(rooms[0].name).toBe('Alice, Bob');
+      expect(rooms[0].memberCount).toBe(3);
+    });
+
+    it('falls back to the LOCALPART for a member with no display name and appends +N beyond three', async () => {
+      routeCalls({ state: [
+        memberEvent('@me:test', 'join', 'Me'),
+        memberEvent('@alice:test', 'join', 'Alice'),
+        memberEvent('@bob:test', 'join'), // no display name ⇒ localpart 'bob'
+        memberEvent('@cara:test', 'join', 'Cara'),
+        memberEvent('@dave:test', 'join', 'Dave'),
+        memberEvent('@eve:test', 'join', 'Eve'),
+      ] });
+      const rooms = await service.joinedRoomsDetailed();
+      // 5 others: first three named, the remaining 2 folded into +N.
+      expect(rooms[0].name).toBe('Alice, bob, Cara +2');
+      expect(rooms[0].memberCount).toBe(6);
+    });
+
+    it('names a fresh DM after its INVITED (not-yet-joined) peer — the headline heroes case', async () => {
+      // Matrix's room-name calculation counts INVITED members as heroes: a DM
+      // whose peer hasn't accepted yet has one joined member (me) plus one
+      // invitee, and a joined-only roster left the raw !roomId on screen.
+      routeCalls({ state: [
+        memberEvent('@me:test', 'join', 'Me'),
+        memberEvent('@peer:test', 'invite', 'Peer'),
+      ] });
+      const rooms = await service.joinedRoomsDetailed();
+      expect(rooms[0].name).toBe('Peer');
+      expect(rooms[0].memberCount).toBe(1); // joined members only
+      expect(joinedMembersFetchCount()).toBe(0); // heroes rode the SAME state fetch
+    });
+
+    it('keeps the roomId fallback when the state fetch fails (fail-soft)', async () => {
+      routeCalls({ state: 'reject' });
+      const rooms = await service.joinedRoomsDetailed();
+      expect(rooms[0].name).toBe('!anon:test');
+    });
+
+    it('keeps the roomId fallback for an empty roster (only me, or nobody)', async () => {
+      routeCalls({ state: [memberEvent('@me:test', 'join', 'Me')] });
+      const rooms = await service.joinedRoomsDetailed();
+      expect(rooms[0].name).toBe('!anon:test');
+    });
+
+    it('NEVER overrides an explicit m.room.name — and never fetches joined_members at all', async () => {
+      routeCalls({ state: [
+        { event_id: '$n', type: 'm.room.name', state_key: '', sender: '@a:test', content: { name: 'Proper Name' } },
+        memberEvent('@me:test', 'join', 'Me'),
+        memberEvent('@alice:test', 'join', 'Alice'),
+      ] });
+      const rooms = await service.joinedRoomsDetailed();
+      expect(rooms[0].name).toBe('Proper Name');
+      expect(joinedMembersFetchCount()).toBe(0);
+    });
   });
 
   // ─────────────── mesh provenance fragment mapping (via-LoRa badge) ───────────────
@@ -592,8 +714,20 @@ describe('MatrixService (hsproxy — no homeserver token in the browser)', () =>
   it('getPinnedEvents() reads m.room.pinned_events state and returns the pinned ids', async () => {
     fetchSpy.and.resolveTo(jsonResponse({ pinned: ['$a:1', '$b:2'] }));
     const ids = await service.getPinnedEvents('!room:test');
-    expect(lastUrl()).toBe(`${BFF}/bff/user/matrix/_matrix/client/v3/rooms/${encodeURIComponent('!room:test')}/state/m.room.pinned_events/`);
+    expect(lastUrl()).toBe(`${BFF}/bff/user/matrix/_matrix/client/v3/rooms/!room:test/state/m.room.pinned_events/`);
     expect(ids).toEqual(['$a:1', '$b:2']);
+  });
+
+  // ─────────────────────────── Path-segment spelling (enc contract) ───────────────────────────
+  // The hsproxy re-escapes '%' in already-encoded paths (Spring URI-template
+  // factory), so `%3A` reaches the homeserver as `%253A` and room-scoped calls
+  // 500. enc() therefore emits the RFC 3986 raw-pchar spelling: ':'/'@' etc.
+  // literal, while true delimiters ('#' in aliases, '/', '?', '%') STAY
+  // encoded. This test pins both halves of that contract.
+  it('path segments spell pchar characters raw but keep true delimiters encoded', async () => {
+    fetchSpy.and.resolveTo(jsonResponse({ room_id: '!j:test' }));
+    await service.joinRoom('#alias:test');
+    expect(lastUrl()).toBe(`${BFF}/bff/user/matrix/_matrix/client/v3/join/%23alias:test`);
   });
 
   it('getPinnedEvents() drops non-event-id junk and caps the list (member-writable content is untrusted)', async () => {

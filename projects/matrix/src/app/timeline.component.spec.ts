@@ -210,6 +210,56 @@ describe('TimelineComponent', () => {
     });
   });
 
+  // ───────── SENDER ATTRIBUTION: roster-resolved names/avatars ─────────
+  // Timeline events never carry sender profile data (mapEvent doesn't set
+  // senderDisplayName/senderAvatarUrl), so before the roster lookup a group
+  // room showed raw @user:server mxids and blank avatars for every message.
+  describe('sender attribution via the joined roster (members input)', () => {
+    it('renders the roster display name for a sender the events carry no profile for', async () => {
+      const e = msg({ eventId: '$b1', sender: '@bob:hs' });
+      await withReceipts([e], {}, [member({ userId: '@bob:hs', displayName: 'Bob' })]);
+      const sender = fixture.nativeElement.querySelector('[data-testid="event-$b1"] [data-testid="event-sender"]');
+      expect(sender.textContent.trim()).toBe('Bob');
+    });
+
+    it('falls back to the bare mxid when the sender is not in the roster (unknown/departed member)', async () => {
+      const e = msg({ eventId: '$g1', sender: '@ghost:hs' });
+      await withReceipts([e], {}, [member({ userId: '@bob:hs', displayName: 'Bob' })]);
+      const sender = fixture.nativeElement.querySelector('[data-testid="event-$g1"] [data-testid="event-sender"]');
+      expect(sender.textContent.trim()).toBe('@ghost:hs');
+    });
+
+    it('prefers the event\'s own senderDisplayName over the roster name when a caller populated it', async () => {
+      const e = msg({ eventId: '$b2', sender: '@bob:hs', senderDisplayName: 'Bobby (event)' });
+      await withReceipts([e], {}, [member({ userId: '@bob:hs', displayName: 'Bob' })]);
+      expect(component.senderName(e)).toBe('Bobby (event)');
+    });
+
+    it('announces the roster\'s ASCII screenReaderName while showing the roster\'s UTF-8 display name', async () => {
+      const e = msg({ eventId: '$y1', sender: '@yamada:hs' });
+      await withReceipts([e], {}, [member({ userId: '@yamada:hs', displayName: '山田太郎', screenReaderName: 'Yamada Taro' })]);
+      const sender = fixture.nativeElement.querySelector('[data-testid="event-$y1"] [data-testid="event-sender"]');
+      expect(sender.textContent.trim()).toBe('山田太郎');
+      const group = fixture.nativeElement.querySelector('[data-testid="event-$y1"] .actions');
+      expect(group.getAttribute('aria-label')).toBe('Actions for message from Yamada Taro');
+    });
+
+    it('keeps the "via LoRa mesh" suffix on the announced roster-resolved name', async () => {
+      const e = msg({ eventId: '$m9', sender: '@mesh-a1b2c3d4:hs' });
+      await withReceipts([e], {}, [member({ userId: '@mesh-a1b2c3d4:hs', displayName: 'Trail Radio' })]);
+      expect(component.senderAriaName(e)).toBe('Trail Radio via LoRa mesh');
+    });
+
+    it('paints the avatar from the roster avatarUrl (28px thumbnail) and blanks it for an unknown sender', async () => {
+      const stub = TestBed.inject(MatrixService) as unknown as MatrixServiceStub;
+      const e = msg({ eventId: '$b3', sender: '@bob:hs' });
+      await withReceipts([e], {}, [member({ userId: '@bob:hs', displayName: 'Bob', avatarUrl: 'mxc://hs/bob' })]);
+      expect(component.avatarBg(e)).toBe('url(https://m/x)');
+      expect(stub.mxcToHttp).toHaveBeenCalledWith('mxc://hs/bob', { thumbnail: true, w: 28, h: 28 });
+      expect(component.avatarBg(msg({ sender: '@ghost:hs' }))).toBe('');
+    });
+  });
+
   // ───────── USER-SITUATIONAL: screenReaderName on the author alt/aria-label ─────────
   describe('USER-SITUATIONAL — screenReaderName at name aria-label/alt', () => {
     it('announces the ASCII screenReaderName in the image alt while keeping the visible name UTF-8', async () => {

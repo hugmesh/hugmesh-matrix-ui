@@ -61,11 +61,21 @@
       Private: invite-only. Public: anyone can find and join. Trusted private: invited members
       join with the same permissions as you.
     </p>
+    <label class="sr" for="create-invites">Invite people (optional)</label>
+    <input id="create-invites" data-testid="input-create-invites" [(ngModel)]="newInvites"
+           name="invites" placeholder="@user:server, @other:server"
+           aria-describedby="create-invites-help" />
+    <p id="create-invites-help" class="field-help" data-testid="create-invites-help">
+      Optionally invite people right away: enter their Matrix ids (like
+      <code>@user:server</code>) separated by commas. Leave empty to invite no one yet.
+    </p>
     <button type="submit">Create</button>
     <p *ngIf="submittedCreate() && !newName.trim()" class="error"
        role="alert" aria-live="assertive" data-testid="create-room-error">
       Room name is required.
     </p>
+    <p *ngIf="createError()" class="error" role="alert" aria-live="assertive"
+       data-testid="rl-create-error">{{ createError() }}</p>
   </form>
 
   <form *ngIf="showDm()" class="dialog" aria-label="Start direct message" (submit)="startDm($event)">

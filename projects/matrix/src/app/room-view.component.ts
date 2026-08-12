@@ -90,6 +90,11 @@ export class RoomViewComponent implements OnInit, OnChanges, OnDestroy {
   /** The event id we last advertised a read receipt for, so the send-on-view
    *  effect fires ONCE per newly-arrived latest event (not on every re-render). */
   private lastReadEventId: string | null = null;
+  /** m.room.member event ids the roster-refresh effect has already processed,
+   *  so each membership change triggers exactly ONE joinedMembers refetch —
+   *  the live feed re-emits the whole timeline array on every delta, and
+   *  without this dedupe every unrelated message would refetch the roster. */
+  private readonly seenMemberEventIds = new Set<string>();
 
   constructor() {
     // React to each new timeline message: derive the owner + expression that
@@ -121,6 +126,43 @@ export class RoomViewComponent implements OnInit, OnChanges, OnDestroy {
       this.lastReadEventId = latest.eventId;
       void this.markRead(id, latest.eventId);
     });
+
+    // LIVE ROSTER: members/memberCount load once in load(id), so anyone who
+    // joins AFTER the room is opened never appears — the roster the timeline
+    // resolves sender names/avatars from and the "{{N}} members" header both
+    // go stale (a new joiner's messages would show their raw mxid). Watch the
+    // live feed for m.room.member events and re-fetch the joined roster once
+    // per NEW membership event (deduped by eventId — the feed re-emits the
+    // whole array every delta). Fail-soft: a rejected refetch keeps the last
+    // known roster rather than blanking it.
+    effect(() => {
+      const id = this.roomId();
+      const events = this.liveEvents();
+      if (!id || !events) return;
+      let changed = false;
+      for (const ev of events) {
+        if (ev.type !== 'm.room.member' || this.seenMemberEventIds.has(ev.eventId)) continue;
+        this.seenMemberEventIds.add(ev.eventId);
+        changed = true;
+      }
+      if (changed) void this.refreshMembers(id);
+    });
+  }
+
+  /** Re-fetch the joined roster after a live membership change (fail-soft —
+   *  a rejected fetch keeps the previous roster; shared shape with load()). */
+  private async refreshMembers(roomId: string): Promise<void> {
+    try {
+      const members = await this.matrix.joinedMembers(roomId);
+      // STALE-ROOM GUARD: the user may have switched rooms while this fetch
+      // was in flight; a late resolution for the PREVIOUS room must never
+      // overwrite the CURRENT room's roster — the timeline resolves every
+      // sender name/avatar from members(), so room B would caption its
+      // messages with room A's identities.
+      if (this.roomId() !== roomId) return;
+      this.memberCount.set(members.length);
+      this.members.set(members);
+    } catch { /* ignore — keep the last known roster */ }
   }
 
   /** Advertise our read position up to `eventId` (public m.read receipt + the
@@ -157,12 +199,26 @@ export class RoomViewComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   private async load(id: string): Promise<void> {
+    // roomId is set FIRST so the stale-room guards below (and the ones in
+    // refreshMembers) compare against the room the user most recently picked:
+    // a rapid A→B switch leaves load(A)'s awaits resolving AFTER load(B) has
+    // already populated the view, and an unguarded write-back would overwrite
+    // room B's summary/roster with room A's — the timeline resolves every
+    // sender name/avatar from members(), so B's messages would carry A's
+    // identities. Each write is guarded after ITS await (any await is a seam
+    // a newer load can slip through).
     this.roomId.set(id);
     try {
-      this.summary.set(await this.matrix.roomSummary(id));
-    } catch { this.summary.set(null); }
+      const summary = await this.matrix.roomSummary(id);
+      if (this.roomId() !== id) return;
+      this.summary.set(summary);
+    } catch {
+      if (this.roomId() !== id) return;
+      this.summary.set(null);
+    }
     try {
       const members = await this.matrix.joinedMembers(id);
+      if (this.roomId() !== id) return;
       this.memberCount.set(members.length);
       // Keep the roster so the timeline can name a read-receipt author
       // ("Read by <name>") and render their avatar rather than a bare user id.
@@ -171,6 +227,7 @@ export class RoomViewComponent implements OnInit, OnChanges, OnDestroy {
     // Fail-soft: the service resolves null on unset/denied/malformed — the
     // 3D-room button just stays hidden.
     const chat3d = await this.chat3d.getChat3dState(id);
+    if (this.roomId() !== id) return;
     this.chat3dEnabled.set(chat3d?.enabled === true);
   }
 

@@ -261,19 +261,32 @@ export class TimelineComponent implements OnChanges {
 
   trackRow = (_: number, r: TimelineRow) => r.event.eventId;
 
-  /** VISIBLE author name — the (possibly non-ASCII) display name as-is. */
+  /** Resolve a sender user id against the joined roster the host feeds in.
+   *  Timeline events do NOT carry sender profile data (mapEvent never sets
+   *  senderDisplayName/senderAvatarUrl — the CS-API events don't include it),
+   *  so WITHOUT this lookup a group room shows raw @user:server mxids and
+   *  blank avatars for every message. The roster is the same one receiptChip
+   *  already resolves read-receipt readers from. */
+  private memberOf(userId: string): RoomMember | undefined {
+    return this.memberList().find((m) => m.userId === userId);
+  }
+
+  /** VISIBLE author name — the (possibly non-ASCII) display name as-is: the
+   *  event's own senderDisplayName when a caller populated it, else the joined
+   *  roster's display name, else the bare mxid (unknown/departed sender). */
   senderName(e: TimelineEvent): string {
-    return e.senderDisplayName || e.sender;
+    return e.senderDisplayName || this.memberOf(e.sender)?.displayName || e.sender;
   }
 
   /** ANNOUNCED author name for aria-label/alt — the ASCII screenReaderName when
-   *  present, else the display name. Keeps the visible text UTF-8 while screen
-   *  readers/tab order get the ASCII name (mirrors the server ScreenReaderNames
-   *  rule via the shared {@link accessibleName} util). A mesh-bridged author is
-   *  announced WITH its radio provenance ("… via LoRa mesh"), the same way the
-   *  visible badge marks it, so screen-reader users are never told less. */
+   *  present (event fragment first, else the roster's), else the display name.
+   *  Keeps the visible text UTF-8 while screen readers/tab order get the ASCII
+   *  name (mirrors the server ScreenReaderNames rule via the shared
+   *  {@link accessibleName} util). A mesh-bridged author is announced WITH its
+   *  radio provenance ("… via LoRa mesh"), the same way the visible badge marks
+   *  it, so screen-reader users are never told less. */
   senderAriaName(e: TimelineEvent): string {
-    const name = accessibleName(e.senderDisplayName || e.sender, e.senderScreenReaderName);
+    const name = accessibleName(this.senderName(e), e.senderScreenReaderName ?? this.memberOf(e.sender)?.screenReaderName);
     return this.isMeshEvent(e) ? `${name} via LoRa mesh` : name;
   }
 
@@ -306,8 +319,12 @@ export class TimelineComponent implements OnChanges {
     return `${parts.join(', ')}. LoRa node ids are not cryptographically authenticated.`;
   }
 
+  /** Author avatar `url(...)` background: the event's own senderAvatarUrl when
+   *  a caller populated it, else the joined roster's avatar (events never carry
+   *  one — see {@link memberOf}), else '' (the CSS initial fallback). */
   avatarBg(e: TimelineEvent): string {
-    return e.senderAvatarUrl ? `url(${this.matrix.mxcToHttp(e.senderAvatarUrl, { thumbnail: true, w: 28, h: 28 })})` : '';
+    const url = e.senderAvatarUrl || this.memberOf(e.sender)?.avatarUrl;
+    return url ? `url(${this.matrix.mxcToHttp(url, { thumbnail: true, w: 28, h: 28 })})` : '';
   }
 
   displayBody(e: TimelineEvent): string {

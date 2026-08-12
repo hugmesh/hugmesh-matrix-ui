@@ -175,6 +175,113 @@ describe('RoomListComponent', () => {
     expect(matrix.createRoom.calls.mostRecent().args[0].name).toBe('Project X');
   });
 
+  // ───────── INVITE-AT-CREATION + announced create failures ─────────
+  // The create dialog had no way to invite anyone (group creation was two
+  // disconnected steps) and create() had no try/catch, so a server rejection
+  // silently swallowed the dialog state.
+  describe('create-room invites + announced create errors', () => {
+    it('renders the optional invite input with help explaining comma-separated Matrix ids', () => {
+      component.showCreate.set(true);
+      fixture.detectChanges();
+      const input = fixture.nativeElement.querySelector('[data-testid="input-create-invites"]');
+      expect(input).toBeTruthy();
+      expect(input.getAttribute('placeholder')).toBe('@user:server, @other:server');
+      expect(expectDescribedByHelp(fixture.nativeElement, '[data-testid="input-create-invites"]')).toContain('comma');
+    });
+
+    it('passes the parsed invite array to createRoom (commas/whitespace split, empties dropped)', async () => {
+      component.showCreate.set(true);
+      component.newName = 'Group';
+      component.newInvites = ' @a:test,, @b:test  @c:test , ';
+      await component.create(new Event('submit'));
+      expect(matrix.createRoom.calls.mostRecent().args[0].invite).toEqual(['@a:test', '@b:test', '@c:test']);
+    });
+
+    it('omits the invite field entirely when the input is blank', async () => {
+      component.showCreate.set(true);
+      component.newName = 'Solo';
+      component.newInvites = '   ';
+      await component.create(new Event('submit'));
+      expect(matrix.createRoom.calls.mostRecent().args[0].invite).toBeUndefined();
+    });
+
+    it('REJECTS a malformed invitee with an announced error NAMING the bad entry, never calling createRoom', async () => {
+      component.showCreate.set(true);
+      component.newName = 'Group';
+      component.newInvites = '@ok:test, bogus:test';
+      fixture.detectChanges();
+      await component.create(new Event('submit'));
+      fixture.detectChanges();
+      expect(matrix.createRoom).not.toHaveBeenCalled();
+      const err = fixture.nativeElement.querySelector('[data-testid="rl-create-error"]');
+      expect(err).toBeTruthy();
+      expect(err.getAttribute('role')).toBe('alert');
+      expect(err.getAttribute('aria-live')).toBe('assertive');
+      expect(err.textContent).toContain('bogus:test');
+    });
+
+    it('announces a server-REJECTED create as a role=alert and keeps the dialog open with its state', async () => {
+      matrix.createRoom.and.rejectWith(new Error('createRoom failed: 403'));
+      component.showCreate.set(true);
+      component.newName = 'Group';
+      component.newInvites = '@a:test';
+      fixture.detectChanges();
+      await component.create(new Event('submit'));
+      fixture.detectChanges();
+      const err = fixture.nativeElement.querySelector('[data-testid="rl-create-error"]');
+      expect(err).toBeTruthy();
+      expect(err.getAttribute('role')).toBe('alert');
+      expect(err.textContent).toContain('Could not create the room');
+      expect(err.textContent).toContain('403');
+      // The dialog and its state survive so the user can correct and retry.
+      expect(component.showCreate()).toBeTrue();
+      expect(component.newName).toBe('Group');
+      expect(component.newInvites).toBe('@a:test');
+    });
+
+    it('clears the inputs (invites included) and closes the dialog only on SUCCESS', async () => {
+      component.showCreate.set(true);
+      component.newName = 'Group';
+      component.newInvites = '@a:test';
+      await component.create(new Event('submit'));
+      expect(component.newInvites).toBe('');
+      expect(component.newName).toBe('');
+      expect(component.showCreate()).toBeFalse();
+      expect(component.createError()).toBe('');
+    });
+
+    it('domain-locked: REJECTS a provably cross-domain invitee with the lock why-notice, never creating', async () => {
+      TestBed.inject(SessionService).set(sessionWith(['user', 'matrix_domainlocked']));
+      matrix.whoami.and.resolveTo('@dana:tenant-a.test');
+      component.showCreate.set(true);
+      component.newName = 'Group';
+      component.newInvites = '@local:tenant-a.test, @remote:tenant-b.test';
+      fixture.detectChanges();
+      await component.create(new Event('submit'));
+      fixture.detectChanges();
+      expect(matrix.createRoom).not.toHaveBeenCalled();
+      const err = fixture.nativeElement.querySelector('[data-testid="rl-create-error"]');
+      expect(err).toBeTruthy();
+      expect(err.textContent).toContain('@remote:tenant-b.test');
+      expect(err.textContent).toContain('another server');
+      expect(err.textContent).toContain('domain-locked');
+      TestBed.inject(SessionService).clear();
+    });
+
+    it('domain-locked: never blocks LOCAL invitees (same-server ids go through)', async () => {
+      TestBed.inject(SessionService).set(sessionWith(['user', 'matrix_domainlocked']));
+      matrix.whoami.and.resolveTo('@dana:tenant-a.test');
+      component.showCreate.set(true);
+      component.newName = 'Group';
+      component.newInvites = '@bob:tenant-a.test';
+      await component.create(new Event('submit'));
+      expect(matrix.createRoom).toHaveBeenCalled();
+      expect(matrix.createRoom.calls.mostRecent().args[0].invite).toEqual(['@bob:tenant-a.test']);
+      expect(component.createError()).toBe('');
+      TestBed.inject(SessionService).clear();
+    });
+  });
+
   // ───────── HELP TEXT: sighted hint + screen-reader association ─────────
   describe('help text wiring', () => {
     it('wires the create / DM / join controls to visible, present help via aria-describedby', () => {

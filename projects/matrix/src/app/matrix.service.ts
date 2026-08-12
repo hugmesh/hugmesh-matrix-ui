@@ -266,8 +266,13 @@ export interface SyncState {
     prevBatch?: string;
     state: TimelineEvent[];
     ephemeral: { typing: string[]; receipts: Record<string, Record<string, { user: string; ts: number }[]>> };
-    unreadCount: number;
-    highlightCount: number;
+    /** UNDEFINED when the delta carried no unread_notifications block — the
+     *  CS-API allows that for purely ephemeral (typing/receipt) deltas, and
+     *  ruma-based servers skip-serialize empty blocks. Absence means "counts
+     *  unchanged", NOT zero; coercing it to 0 here is what used to wipe live
+     *  badges, so consumers must fold `?? previous`. */
+    unreadCount?: number;
+    highlightCount?: number;
     limited: boolean;
   }>;
   /** Rooms the caller is INVITED to (rooms.invite) — previously discarded, so
@@ -401,8 +406,19 @@ export class MatrixService {
     return `${prefix}${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
   }
 
+  /**
+   * Percent-encode a PATH SEGMENT, then restore the characters RFC 3986 permits
+   * LITERALLY in a segment (pchar sub-delims + ':' + '@'). Both spellings are
+   * valid URIs, but the raw-pchar one is the only spelling that survives the
+   * user-bff hsproxy: its Spring WebClient hands the path to a URI-template
+   * factory that RE-escapes '%', so an encoded `!r%3Atest` arrives at the
+   * homeserver as `!r%253Atest` and every room-scoped call 500s
+   * (M_UNKNOWN "room of unknown version"). tuwunel itself decodes either
+   * spelling correctly — the proxy is the constraint. '#' (room aliases), '/',
+   * '?' and '%' stay encoded: they delimit the URL itself.
+   */
   private enc(s: string): string {
-    return encodeURIComponent(s);
+    return encodeURIComponent(s).replace(/%(24|26|2B|2C|3A|3B|3D|40)/gi, (m) => decodeURIComponent(m));
   }
 
   /** Map a raw CS-API event JSON into our TimelineEvent shape. */
@@ -494,8 +510,11 @@ export class MatrixService {
         prevBatch: jr.timeline?.prev_batch,
         state: (jr.state?.events ?? []).map((e: any) => this.mapEvent(e, roomId)),
         ephemeral: { typing, receipts },
-        unreadCount: jr.unread_notifications?.notification_count ?? 0,
-        highlightCount: jr.unread_notifications?.highlight_count ?? 0,
+        // NO `?? 0` fallback: an absent unread_notifications block means the
+        // counts are UNCHANGED, not zero (see the SyncState field docs) —
+        // undefined lets consumers keep their previous value.
+        unreadCount: jr.unread_notifications?.notification_count,
+        highlightCount: jr.unread_notifications?.highlight_count,
         limited: !!jr.timeline?.limited,
       };
     }
@@ -555,14 +574,18 @@ export class MatrixService {
   }
 
   /** List joined room ids then hydrate name/topic/avatar/isDirect via state +
-   *  m.direct account data. */
+   *  m.direct account data. A room with NO m.room.name falls back to a
+   *  heroes-style member-derived name (joined OR invited members, from the
+   *  same single state fetch) rather than displaying its raw !opaque:server
+   *  id. */
   async joinedRoomsDetailed(): Promise<MatrixRoom[]> {
     const r = await this.hsFetch(`${this.baseUrl}/_matrix/client/v3/joined_rooms`, { headers: this.headers() });
     if (!r.ok) return [];
     const ids: string[] = (await r.json()).joined_rooms ?? [];
     let directMap: Record<string, string[]> = {};
+    let me: string | null = null;
     try {
-      const me = await this.whoami();
+      me = await this.whoami();
       if (me) {
         const md = await this.getAccountData<Record<string, string[]>>(me, 'm.direct');
         if (md) directMap = md;
@@ -575,12 +598,39 @@ export class MatrixService {
     const rooms = await Promise.all(ids.map(async (roomId) => {
       const room: MatrixRoom = { roomId, name: roomId, myMembership: 'join' };
       try {
-        const summary = await this.roomSummary(roomId);
+        // ONE state fetch per room feeds BOTH the summary and the heroes
+        // fallback below — the state already carries every m.room.member
+        // event, so the extra joined_members roster fetch (plus its internal
+        // power-levels lookup) the old fallback made is pure waste.
+        const state = await this.roomState(roomId);
+        const summary = this.summaryFromState(state);
         room.name = summary.name || roomId;
         room.topic = summary.topic;
         room.avatarUrl = summary.avatarUrl;
         room.canonicalAlias = summary.canonicalAlias;
-      } catch { /* ignore */ }
+        // HEROES-STYLE fallback: a room without an m.room.name (every fresh
+        // DM and most ad-hoc group rooms) used to display as its raw
+        // !opaque:id. Name it after the OTHER members instead ("A, B" /
+        // "A, B, C" / "A, B, C +N"). INVITED members count as heroes too,
+        // matching Matrix's room-name calculation — the headline case is a
+        // fresh DM whose peer hasn't accepted yet: the only other member is
+        // membership=invite, and a joined-only roster would leave the raw
+        // room id on screen. Fail-soft: no heroes keeps the roomId fallback
+        // rather than blanking the row.
+        if (!summary.name) {
+          const members = state.filter((e) => e.type === 'm.room.member');
+          const joinedCount = members.filter((e) => e.content?.membership === 'join').length;
+          if (joinedCount) room.memberCount = joinedCount;
+          const heroes = members.filter((e) =>
+            (e.content?.membership === 'join' || e.content?.membership === 'invite')
+            && !!e.stateKey && e.stateKey !== me);
+          const names = heroes.slice(0, 3).map((e) => e.content?.displayname || this.localpart(e.stateKey!));
+          if (names.length) {
+            const extra = heroes.length - names.length;
+            room.name = extra > 0 ? `${names.join(', ')} +${extra}` : names.join(', ');
+          }
+        }
+      } catch { /* ignore — keep the roomId fallback */ }
       if (dmRoomToUser[roomId]) {
         room.isDirect = true;
         room.dmUserId = dmRoomToUser[roomId];
@@ -590,10 +640,25 @@ export class MatrixService {
     return rooms;
   }
 
+  /** The localpart of a Matrix user id (`@local:server` → `local`); the id
+   *  itself when it doesn't parse (fail-soft — it only feeds display copy). */
+  private localpart(userId: string): string {
+    const m = /^@([^:]+):/.exec(userId);
+    return m ? m[1] : userId;
+  }
+
   /** Derive name/topic/avatar/canonical_alias/join_rule/power_levels from a
    *  single full-state fetch. */
   async roomSummary(roomId: string): Promise<RoomSummary> {
-    const state = await this.roomState(roomId);
+    return this.summaryFromState(await this.roomState(roomId));
+  }
+
+  /** Derive a {@link RoomSummary} from an ALREADY-FETCHED full room state.
+   *  Split out of {@link roomSummary} so joinedRoomsDetailed can reuse ONE
+   *  state fetch per room for both the summary and the heroes-style name
+   *  fallback (the state also carries every m.room.member event) instead of
+   *  fetching state AND the joined_members roster per unnamed room. */
+  private summaryFromState(state: TimelineEvent[]): RoomSummary {
     // State events with an empty state_key carry the canonical room metadata.
     const pick = (type: string) => state.find((e) => e.type === type && (e.stateKey ?? '') === '')?.content;
     const name = pick('m.room.name');

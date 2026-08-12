@@ -1,11 +1,11 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { WritableSignal, signal } from '@angular/core';
+import { SimpleChanges, WritableSignal, signal } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { of } from 'rxjs';
 import { RoomViewComponent } from './room-view.component';
 import { HugCharacterPanelComponent } from './vn/hug-character-panel.component';
-import { MatrixService, RoomSummary, TimelineEvent } from './matrix.service';
+import { MatrixService, RoomMember, RoomSummary, TimelineEvent } from './matrix.service';
 
 type SyncRoom = { timeline: TimelineEvent[]; typing: string[] } | null;
 
@@ -195,5 +195,117 @@ describe('RoomViewComponent', () => {
     await component.onSent();
     expect(matrix.sendReceipt).toHaveBeenCalledWith('!r:test', '$latest');
     expect(matrix.setReadMarker).toHaveBeenCalledWith('!r:test', '$latest', '$latest');
+  });
+
+  // ───────── LIVE MEMBER ROSTER: joiners after load(id) must appear ─────────
+  // members/memberCount load once in load(id); before the roster-refresh
+  // effect anyone joining after the room was opened never appeared — the
+  // header count and the roster the timeline names senders from went stale.
+  describe('live roster refresh on m.room.member events', () => {
+    function memberEvent(eventId: string, sender: string): TimelineEvent {
+      return { eventId, type: 'm.room.member', sender, content: { membership: 'join' } } as TimelineEvent;
+    }
+
+    it('re-fetches the joined roster when a live m.room.member event arrives (late joiner appears)', async () => {
+      matrix.joinedMembers.calls.reset();
+      matrix.joinedMembers.and.resolveTo([
+        { userId: '@me:test', membership: 'join', powerLevel: 0 },
+        { userId: '@late:test', displayName: 'Late Joiner', membership: 'join', powerLevel: 0 },
+      ]);
+      syncRoom.set({ timeline: [memberEvent('$j1', '@late:test')], typing: [] });
+      fixture.detectChanges();
+      await fixture.whenStable();
+      expect(matrix.joinedMembers).toHaveBeenCalledWith('!r:test');
+      expect(component.memberCount()).toBe(2);
+      expect(component.members().map((m) => m.userId)).toContain('@late:test');
+    });
+
+    it('refetches ONCE per member event id — a re-emitted feed or a plain message never refetches', async () => {
+      const joined = memberEvent('$j1', '@late:test');
+      syncRoom.set({ timeline: [joined], typing: [] });
+      fixture.detectChanges();
+      await fixture.whenStable();
+      matrix.joinedMembers.calls.reset();
+      // The live feed re-emits the WHOLE array on every delta: the same member
+      // event plus an ordinary message must not trigger another refetch.
+      syncRoom.set({
+        timeline: [joined, { eventId: '$m1', type: 'm.room.message', sender: '@late:test', body: 'hi' } as TimelineEvent],
+        typing: [],
+      });
+      fixture.detectChanges();
+      await fixture.whenStable();
+      expect(matrix.joinedMembers).not.toHaveBeenCalled();
+    });
+
+    it('FAIL-SOFT: a rejected roster refetch keeps the last known roster (never blanks it)', async () => {
+      matrix.joinedMembers.and.rejectWith(new Error('roster fetch down'));
+      syncRoom.set({ timeline: [memberEvent('$j2', '@x:test')], typing: [] });
+      fixture.detectChanges();
+      await fixture.whenStable();
+      // The initial load(id) roster (just @me:test) survives the failure.
+      expect(component.memberCount()).toBe(1);
+      expect(component.members().map((m) => m.userId)).toEqual(['@me:test']);
+    });
+  });
+
+  // ───────── STALE-ROOM GUARD: late resolutions must never cross rooms ─────────
+  // refreshMembers() and load() await HTTP then write members/memberCount (and
+  // summary in load); before the guard, a slow response for the PREVIOUS room
+  // landed after the user had switched and overwrote the CURRENT room's state.
+  // The timeline resolves every sender name/avatar from members(), so room B
+  // would caption its messages with room A's identities.
+  describe('stale-room guard on late resolutions after a room switch', () => {
+    it('discards a late roster refresh for the previous room (refreshMembers race)', async () => {
+      // Room A's ('!r:test', loaded in beforeEach) roster refetch hangs on a
+      // manually-resolved promise; room B's resolves immediately.
+      let resolveA!: (members: RoomMember[]) => void;
+      matrix.joinedMembers.and.callFake((roomId: string) => roomId === '!r:test'
+        ? new Promise<RoomMember[]>((res) => { resolveA = res; })
+        : Promise.resolve([{ userId: '@b:test', membership: 'join', powerLevel: 0 } as RoomMember]));
+      // A live membership event triggers refreshMembers('!r:test') → parked.
+      syncRoom.set({
+        timeline: [{ eventId: '$j9', type: 'm.room.member', sender: '@x:test', content: { membership: 'join' } } as TimelineEvent],
+        typing: [],
+      });
+      fixture.detectChanges();
+      await fixture.whenStable();
+      // The user switches to room B (host-input path) and its load completes.
+      component.roomIdInput = '!b:test';
+      component.ngOnChanges({ roomIdInput: {} } as unknown as SimpleChanges);
+      for (let i = 0; i < 4; i++) {
+        await fixture.whenStable();
+      }
+      expect(component.members().map((m) => m.userId)).toEqual(['@b:test']);
+      // Room A's roster FINALLY arrives — and must be discarded, not written.
+      resolveA([{ userId: '@stale-a:test', membership: 'join', powerLevel: 0 } as RoomMember]);
+      for (let i = 0; i < 4; i++) {
+        await fixture.whenStable();
+      }
+      expect(component.members().map((m) => m.userId)).toEqual(['@b:test']);
+      expect(component.memberCount()).toBe(1);
+    });
+
+    it('discards a superseded load()\'s late summary after a rapid A→B switch', async () => {
+      // load('!a:test') parks on its summary fetch; load('!b:test') then runs
+      // to completion. A's late summary must not clobber B's (every load()
+      // write is guarded after its own await).
+      let resolveASummary!: (s: RoomSummary) => void;
+      matrix.roomSummary.and.callFake((roomId: string) => roomId === '!a:test'
+        ? new Promise<RoomSummary>((res) => { resolveASummary = res; })
+        : Promise.resolve({ name: 'Bravo' } as RoomSummary));
+      component.roomIdInput = '!a:test';
+      component.ngOnChanges({ roomIdInput: {} } as unknown as SimpleChanges);
+      component.roomIdInput = '!b:test';
+      component.ngOnChanges({ roomIdInput: {} } as unknown as SimpleChanges);
+      for (let i = 0; i < 4; i++) {
+        await fixture.whenStable();
+      }
+      expect(component.summary()?.name).toBe('Bravo');
+      resolveASummary({ name: 'Stale Alpha' } as RoomSummary);
+      for (let i = 0; i < 4; i++) {
+        await fixture.whenStable();
+      }
+      expect(component.summary()?.name).toBe('Bravo');
+    });
   });
 });

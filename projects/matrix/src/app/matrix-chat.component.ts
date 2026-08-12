@@ -49,17 +49,42 @@ export class MatrixChatComponent implements OnInit, OnDestroy {
 
   private since: string | undefined;
   private running = false;
+  private querySub?: { unsubscribe(): void };
 
   async ngOnInit(): Promise<void> {
     this.userId.set(await this.matrix.whoami());
     const rooms = await this.matrix.joinedRoomsDetailed();
     this.rooms.set(rooms);
 
-    const wanted = this.route.snapshot.queryParamMap.get('room');
-    const pick = wanted
-      ? (rooms.find((r) => r.roomId === wanted) ?? { roomId: wanted, name: wanted })
-      : rooms[0];
-    if (pick) this.select(pick);
+    // REACTIVE ?room=: a snapshot read here would only honour the query param
+    // present at init — later in-app navigation (a room link, the call view's
+    // back-link) changed the URL but never the selected room. Subscribing
+    // keeps selection following the param for the component's lifetime; the
+    // FIRST emission covers what the old snapshot read did (rooms are already
+    // loaded above, so the lookup can match a joined room). Mirrors the
+    // paramMap subscription room-view.component holds and tears down.
+    // Only ACT when the param VALUE changes: Angular re-emits queryParamMap on
+    // every same-route navigation, so a future navigation that merely carries
+    // the old ?room= along (e.g. queryParamsHandling: 'merge' adding an
+    // unrelated param) would otherwise snap selection back to a stale room the
+    // user has already clicked away from. The sentinel starts as undefined —
+    // distinct from the null of "no param" — so the FIRST emission always acts.
+    let lastSeenRoomParam: string | null | undefined;
+    this.querySub = this.route.queryParamMap.subscribe((qm) => {
+      const wanted = qm.get('room');
+      if (wanted === lastSeenRoomParam) return;
+      lastSeenRoomParam = wanted;
+      if (wanted) {
+        if (wanted !== this.current()?.roomId) {
+          // A room we're not joined to (deep link) still selects a synthetic
+          // row so the view can attempt to render/join it.
+          this.select(this.rooms().find((r) => r.roomId === wanted) ?? { roomId: wanted, name: wanted });
+        }
+      } else if (!this.current()) {
+        const first = this.rooms()[0];
+        if (first) this.select(first);
+      }
+    });
 
     this.running = true;
     void this.syncLoop();
@@ -67,14 +92,38 @@ export class MatrixChatComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.running = false;
+    this.querySub?.unsubscribe();
   }
 
   onRooms(rooms: MatrixRoom[]): void {
-    this.rooms.set(rooms);
+    this.rooms.set(this.mergeCounts(rooms));
+  }
+
+  /** Carry unread/highlight badge counts forward from the current rooms() rows
+   *  onto a freshly-fetched room list. joinedRoomsDetailed() hydrates rows from
+   *  state + account data and NEVER sees unread counts — those only ride /sync
+   *  deltas, and a delta only mentions rooms with NEW activity — so replacing
+   *  rooms() with fresh rows verbatim would wipe every folded badge and nothing
+   *  would ever restore them. Fresh rows with no previous counterpart (a
+   *  just-appeared room) keep their (empty) counts until a delta supplies some. */
+  private mergeCounts(fresh: MatrixRoom[]): MatrixRoom[] {
+    const previous = new Map(this.rooms().map((r) => [r.roomId, r]));
+    return fresh.map((r) => {
+      const prev = previous.get(r.roomId);
+      return prev ? { ...r, unreadCount: prev.unreadCount, highlightCount: prev.highlightCount } : r;
+    });
   }
 
   select(room: MatrixRoom): void {
     this.current.set(room);
+    // Clicking a room clears its badge IMMEDIATELY: the on-screen room is
+    // being read, and waiting for the server to fold our read receipt into
+    // the next sync delta would leave a stale badge for a visible beat.
+    if (room.unreadCount || room.highlightCount) {
+      this.rooms.update((rooms) => rooms.map((r) =>
+        r.roomId === room.roomId ? { ...r, unreadCount: 0, highlightCount: 0 } : r,
+      ));
+    }
   }
 
   /** Replaces the original 1.5s setInterval poll with a long-poll sync loop
@@ -99,9 +148,32 @@ export class MatrixChatComponent implements OnInit, OnDestroy {
           next[roomId] = { timeline: merged.slice(-200), typing: r.ephemeral.typing, receipts };
         }
         this.syncRooms.set(next);
-        // Refresh the room list (names/unread) when new rooms appear.
+        // UNREAD BADGES: fold each delta's unread/highlight counts into the
+        // room rows — sync() has always parsed them, but they never reached
+        // rooms(), leaving room-list's unread badge permanently dead markup.
+        // The CURRENTLY SELECTED room is forced to 0: it is being read on
+        // screen (our own receipts zero it server-side on the next delta;
+        // forcing it here avoids a one-delta badge flicker). Rooms absent
+        // from this delta keep their existing counts, and so do rooms whose
+        // delta carries UNDEFINED counts — the CS-API allows a joined-room
+        // delta without an unread_notifications block (purely ephemeral
+        // typing/receipt deltas; ruma-based servers skip-serialize empty
+        // blocks), and that absence means "no change", NOT zero.
+        this.rooms.update((rooms) => rooms.map((r) => {
+          const delta = state.rooms[r.roomId];
+          if (!delta) return r;
+          const onScreen = r.roomId === this.current()?.roomId;
+          return {
+            ...r,
+            unreadCount: onScreen ? 0 : (delta.unreadCount ?? r.unreadCount),
+            highlightCount: onScreen ? 0 : (delta.highlightCount ?? r.highlightCount),
+          };
+        }));
+        // Refresh the room list (names) when new rooms appear — through
+        // mergeCounts, because the fresh rows carry no unread counts and a
+        // verbatim set() would wipe every badge folded above for good.
         if (Object.keys(state.rooms).some((id) => !this.rooms().find((r) => r.roomId === id))) {
-          this.rooms.set(await this.matrix.joinedRoomsDetailed());
+          this.rooms.set(this.mergeCounts(await this.matrix.joinedRoomsDetailed()));
         }
       } catch {
         // Back off briefly on transient sync failure.
