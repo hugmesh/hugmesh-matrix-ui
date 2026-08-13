@@ -29,8 +29,8 @@ export const MESH_BRIDGE_BOT_LOCALPART = 'meshbridge';
  * Element Web RoomSettingsDialog. Edit room name (m.room.name), topic
  * (m.room.topic) and avatar (m.room.avatar), invite users, view/edit power
  * levels (m.room.power_levels), configure the Meshtastic LoRa-mesh bridge
- * (systems.hugmesh.mesh.bridge), configure the Shadows-of-the-Net 3D chat
- * room (systems.hugmesh.chat3d) and leave the room.
+ * (net.hugmesh.mesh.bridge), configure the Shadows-of-the-Net 3D chat
+ * room (net.hugmesh.chat3d) and leave the room.
  */
 @Component({
   selector: 'hug-room-settings',
@@ -56,14 +56,14 @@ export class RoomSettingsComponent implements OnInit, OnDestroy {
 
   // ── Mesh bridge (LoRa) ──
   /** The controls' working copy of the room's mesh-bridge state (loaded from the
-   *  systems.hugmesh.mesh.bridge state event; defaults = bridge off). */
+   *  net.hugmesh.mesh.bridge state event; defaults = bridge off). */
   meshEnabled = false;
   meshDevice = DEFAULT_MESH_DEVICE;
   meshChannel = 0;
 
   // ── 3D chat room (Shadows of the Net) ──
   /** The controls' working copy of the room's chat3d state (loaded from the
-   *  systems.hugmesh.chat3d state event; defaults = room off, noir style,
+   *  net.hugmesh.chat3d state event; defaults = room off, noir style,
    *  8 seats, media on, stage moderator-only). */
   chat3dEnabled = false;
   chat3dStyle: Chat3dRoomStyle = DEFAULT_CHAT3D_STYLE;
@@ -270,8 +270,8 @@ export class RoomSettingsComponent implements OnInit, OnDestroy {
    * `state_default` (50) would silently block every non-moderator from
    * publishing their avatar or placing media:
    *
-   *   - `systems.hugmesh.chat3d.avatar` → 0   (everyone dresses themselves)
-   *   - `systems.hugmesh.chat3d.scene`  → 50 when stage is moderator-only,
+   *   - `net.hugmesh.chat3d.avatar` → 0   (everyone dresses themselves)
+   *   - `net.hugmesh.chat3d.scene`  → 50 when stage is moderator-only,
    *                                          else 0
    *
    * The override write re-reads the CURRENT power-levels content and merges
@@ -305,7 +305,7 @@ export class RoomSettingsComponent implements OnInit, OnDestroy {
       if (this.chat3dEnabled && !(await this.writeChat3dPowerOverrides(rid))) {
         this.status.set('3D chat room settings saved — but the power-level overrides could not be written, '
           + 'so members may be unable to publish their avatars or place media. Ask a room admin to allow '
-          + 'the systems.hugmesh.chat3d.avatar and .scene events.');
+          + 'the net.hugmesh.chat3d.avatar and .scene events.');
         return;
       }
       this.status.set('3D chat room settings saved');

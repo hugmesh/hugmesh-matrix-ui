@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { MatrixService } from '../../matrix.service';
 import {
+  LEGACY_VN_SCENE_STATE_TYPES,
   VN_SCENE_STATE_TYPE,
   VnSceneState,
   VnSceneStateService,
@@ -151,7 +152,7 @@ describe('VnSceneStateService', () => {
     service = TestBed.inject(VnSceneStateService);
   });
 
-  it('reads the shared scene from the systems.hugmesh.vn.scene state event', async () => {
+  it('reads the shared scene from the net.hugmesh.vn.scene state event', async () => {
     matrix.getStateEvent.and.resolveTo({
       sceneId: 'vn_scene_beach_sunset',
       props: [{ propId: 'vn_prop_drink', x: 0.7, y: 0.75, scale: 0.35 }],
@@ -173,8 +174,37 @@ describe('VnSceneStateService', () => {
     expect(await service.getSceneState('!room:snap')).toBeNull();
 
     expect(await service.getSceneState('')).toBeNull();
-    // No room id must not even hit the wire.
-    expect(matrix.getStateEvent).toHaveBeenCalledTimes(2);
+    // No room id must not even hit the wire — each wired read walks the
+    // 3-generation name chain (canonical + 2 legacy), so two reads = 6 GETs.
+    expect(matrix.getStateEvent).toHaveBeenCalledTimes(6);
+  });
+
+  it('LEGACY read-fallback: a scene saved under EITHER pre-rebrand name still parses', async () => {
+    // Pre-.net-move rooms persist systems.hugmesh.*; pre-rebrand rooms persist
+    // systems.snapdragon.*. Both are real data — and writes never touch them.
+    const scene = { sceneId: 'vn_scene_cafe', props: [] };
+    for (const legacyType of LEGACY_VN_SCENE_STATE_TYPES) {
+      matrix.getStateEvent = jasmine.createSpy('getStateEvent').and.callFake(
+        async (_room: string, type: string) => {
+          if (type === legacyType) {
+            return scene;
+          }
+          throw new Error('404 M_NOT_FOUND'); // every newer generation is unset
+        });
+
+      expect(await service.getSceneState('!room:snap')).withContext(legacyType).toEqual(scene);
+      expect(matrix.getStateEvent).toHaveBeenCalledWith('!room:snap', legacyType);
+    }
+  });
+
+  it('LEGACY read-fallback: the canonical event WINS over both older generations', async () => {
+    matrix.getStateEvent.and.callFake(async (_room: string, type: string) =>
+      (type === VN_SCENE_STATE_TYPE
+        ? { sceneId: 'vn_scene_void', props: [] } // the newest word
+        : { sceneId: 'vn_scene_cafe', props: [] }));
+
+    expect((await service.getSceneState('!room:snap'))?.sceneId).toBe('vn_scene_void');
+    expect(matrix.getStateEvent).toHaveBeenCalledTimes(1);
   });
 
   it('writes the shared scene as the exact spec content shape', async () => {
@@ -254,6 +284,44 @@ describe('VnSceneStateService', () => {
       expect(applied[2]).toEqual(scenes[2]);
       expect(applied[3]).toEqual(scenes[2]); // coalesced — stage does NOT seizure
       expect(applied[4]).toEqual(scenes[2]);
+    });
+
+    it('LEGACY read-fallback: a legacy-named scene event still renders, PL-guarded under ITS OWN type name', async () => {
+      // The moderated scan must find a scene staged under either pre-rebrand
+      // name, and key the required-to-send PL lookup by the type the event
+      // ACTUALLY arrived under — the old enable flow wrote its per-event
+      // override under that name.
+      for (const legacyType of LEGACY_VN_SCENE_STATE_TYPES) {
+        // Distinct per generation so the second iteration is a GENUINE flip
+        // (an identical scene would satisfy toEqual from lastApplied alone).
+        const scene = { sceneId: `vn_scene_${legacyType.replace(/\./g, '_')}`, props: [] };
+        matrix.roomState.and.resolveTo([
+          { type: legacyType, stateKey: '', sender: '@driver:snap', content: scene },
+          {
+            type: 'm.room.power_levels', stateKey: '', sender: '@creator:snap',
+            // DISTINGUISHING (floor 0): the legacy override (25) sits BELOW
+            // state_default (50) and @driver (30) between them — the scene
+            // applies ONLY when the guard reads the override under the type
+            // the event arrived under; a canonical-keyed lookup would miss it
+            // and wrongly reject the driver against state_default.
+            content: { users: { '@driver:snap': 30 }, users_default: 0, state_default: 50, events: { [legacyType]: 25 } },
+          },
+        ]);
+        expect(await service.getModeratedSceneState('!room:snap', 0)).withContext(legacyType).toEqual(scene);
+      }
+    });
+
+    it('LEGACY read-fallback: the canonical scene event wins over a stale legacy one', async () => {
+      const canonical = { sceneId: 'vn_scene_void', props: [] };
+      matrix.roomState.and.resolveTo([
+        { type: LEGACY_VN_SCENE_STATE_TYPES[0], stateKey: '', sender: '@admin:snap', content: { sceneId: 'vn_scene_cafe', props: [] } },
+        { type: VN_SCENE_STATE_TYPE, stateKey: '', sender: '@admin:snap', content: canonical },
+        {
+          type: 'm.room.power_levels', stateKey: '', sender: '@creator:snap',
+          content: { users: { '@admin:snap': 100 }, users_default: 0, state_default: 50, events: {} },
+        },
+      ]);
+      expect(await service.getModeratedSceneState('!room:snap')).toEqual(canonical);
     });
 
     it('FAIL-SOFT: an unset scene, a thrown read, or no room id ⇒ null (never throws)', async () => {

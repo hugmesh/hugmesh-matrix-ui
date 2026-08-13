@@ -10,7 +10,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: hugmesh-net/hugmesh-matrix-ui
+  IMAGE_NAME: hugmesh/hugmesh-matrix-ui
 
 jobs:
   build-and-push:

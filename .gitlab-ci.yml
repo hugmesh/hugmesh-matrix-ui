@@ -9,7 +9,7 @@
 # the hidden `.pentest-*` jobs that the `pentest:*` jobs below extend. The stage
 # is additive and non-blocking (allow_failure: true) so it never breaks builds.
 include:
-  - project: 'HugMesh/hugmesh-generator'
+  - project: 'hugmesh/hugmesh-generator'
     ref: main
     file: '/tests/pentest/ci/pentest-stage.gitlab-ci.yml'
 
@@ -63,7 +63,7 @@ pentest:load:
 # -----------------------------------------------------------------------------
 # Playwright + BDD (Gherkin) end-to-end suite. PURE TEST CODE under ./e2e — it
 # does NOT touch the karma unit build or any app code. The role-gated Matrix
-# moderation surfaces read their tier from `localStorage['snap.session']`, so
+# moderation surfaces read their tier from `localStorage['hug.session']`, so
 # the USER / MOD / ADMIN / banned + cross-tenant matrix runs WITHOUT a live
 # homeserver or BFF: the cluster-dependent scenarios are `@cluster`-tagged
 # and filtered out by playwright.config.ts, leaving an offline-discoverable

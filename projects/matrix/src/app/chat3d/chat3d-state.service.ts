@@ -8,7 +8,22 @@ import { MatrixService } from '../matrix.service';
  * both read this event to decide whether the 3D room is offered, and anyone
  * the room's power levels allow can change it (mesh-bridge precedent).
  */
-export const CHAT3D_STATE_TYPE = 'systems.hugmesh.chat3d';
+export const CHAT3D_STATE_TYPE = 'net.hugmesh.chat3d';
+
+/**
+ * Pre-rebrand generations of {@link CHAT3D_STATE_TYPE}; read-fallback only —
+ * never written. Room state is immutable history: a room keeps whatever name
+ * was current when its setting was last written, and BOTH old generations are
+ * real data — `systems.hugmesh.*` (every post-squash build before the .net
+ * domain move) and `systems.snapdragon.*` (pre-rebrand rooms). Ordered newest
+ * first: every read path tries the canonical name, then each generation in
+ * order (a newer event wins whenever it exists). Every write — and the
+ * room-settings power-level mirroring — stays canonical-only, so the first
+ * post-move write migrates the room forward.
+ */
+export const LEGACY_CHAT3D_STATE_TYPES: readonly string[] = [
+  'systems.hugmesh.chat3d', 'systems.snapdragon.chat3d',
+];
 
 /** Room visual style the Godot scene boots with. */
 export const CHAT3D_STYLES = ['noir', 'default'] as const;
@@ -40,7 +55,7 @@ export interface Chat3dState {
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
 
 /**
- * Parse a raw `systems.hugmesh.chat3d` state-event content into a
+ * Parse a raw `net.hugmesh.chat3d` state-event content into a
  * {@link Chat3dState}. Tolerant/fail-soft — the content comes from OTHER room
  * members, so treat it as untrusted: `enabled` is strict (`=== true`, a truthy
  * string never opens a 3D room), an unknown `style` falls back to `noir`,
@@ -93,18 +108,28 @@ export class Chat3dStateService {
 
   /**
    * Read the room's 3D chat setting. Null when unset, unreadable, or malformed
-   * — callers treat null as "no 3D room".
+   * — callers treat null as "no 3D room". Generation-chain read: the canonical
+   * {@link CHAT3D_STATE_TYPE} first, then each {@link LEGACY_CHAT3D_STATE_TYPES}
+   * name in order — the first generation that parses wins, so a room written
+   * since the .net move answers from the canonical event (including a canonical
+   * "disabled" over a stale older "enabled").
    */
   async getChat3dState(roomId: string): Promise<Chat3dState | null> {
     if (!roomId) {
       return null;
     }
-    try {
-      const raw = await this.matrix.getStateEvent(roomId, CHAT3D_STATE_TYPE);
-      return parseChat3dState(raw);
-    } catch {
-      return null;
+    // Inline (no helper) so the canonical-hit path keeps the exact promise-hop
+    // depth the pre-chain read had — settling in the callers' specs is
+    // empirically hop-count sensitive (see room-settings' load notes).
+    for (const type of [CHAT3D_STATE_TYPE, ...LEGACY_CHAT3D_STATE_TYPES]) {
+      try {
+        const state = parseChat3dState(await this.matrix.getStateEvent(roomId, type));
+        if (state !== null) {
+          return state;
+        }
+      } catch { /* unset/denied under this name — try the older generation */ }
     }
+    return null;
   }
 
   /**

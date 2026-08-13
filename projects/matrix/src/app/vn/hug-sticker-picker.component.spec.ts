@@ -141,7 +141,7 @@ describe('HugStickerPickerComponent', () => {
     expect(content.info.w).toBe(256);
     expect(content.info.h).toBe(256);
     // namespaced ext carries the VN expression for clients that understand it
-    expect(content['systems.hugmesh.vn'].expression).toBe('happy');
+    expect(content['net.hugmesh.vn'].expression).toBe('happy');
     // a fresh txnId is used (either explicit arg or service-generated default)
     expect(txnId === undefined || typeof txnId === 'string').toBeTrue();
   });

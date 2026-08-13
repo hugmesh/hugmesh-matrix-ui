@@ -9,7 +9,23 @@ import { MatrixService } from '../matrix.service';
  * hsproxy; no client-side token). Account data is PER USER, so the theme
  * follows the account across devices without ever being visible to others.
  */
-export const CHAT_THEME_ACCOUNT_DATA_TYPE = 'systems.hugmesh.chat_theme';
+export const CHAT_THEME_ACCOUNT_DATA_TYPE = 'net.hugmesh.chat_theme';
+
+/**
+ * Pre-rebrand generations of {@link CHAT_THEME_ACCOUNT_DATA_TYPE};
+ * read-fallback only — never written. An account whose theme was saved under
+ * an older branding still carries it under that name, and BOTH old
+ * generations are real data — `systems.hugmesh.*` (every post-squash build
+ * before the .net domain move) and `systems.snapdragon.*` (pre-rebrand
+ * accounts). Ordered newest first: {@link ChatThemeService} reads the
+ * canonical type, then each generation in order (the newest generation that
+ * has content wins — including a canonical `{}` reset marker); every write
+ * goes to the canonical type only, so the first post-move save migrates the
+ * account forward.
+ */
+export const LEGACY_CHAT_THEME_ACCOUNT_DATA_TYPES: readonly string[] = [
+  'systems.hugmesh.chat_theme', 'systems.snapdragon.chat_theme',
+];
 
 /** Instant-boot cache: the last saved theme, applied synchronously on the first
  *  theme-root registration BEFORE the account-data fetch resolves (no flash of
@@ -123,7 +139,7 @@ const THEME_VARS = ['--hugm-chat-accent', '--hugm-chat-bubble-mine', '--hugm-cha
 
 /**
  * Per-user chat theming. Owns the {@link ChatThemeConfig} model, persists it to
- * Matrix account data (`systems.hugmesh.chat_theme`) with a localStorage
+ * Matrix account data (`net.hugmesh.chat_theme`) with a localStorage
  * fast-boot fallback, and APPLIES it by stamping `data-matrix-*` attributes +
  * `--hugm-chat-*` custom properties onto the REMOTE'S OWN ROOT ELEMENTS only.
  *
@@ -281,7 +297,14 @@ export class ChatThemeService {
     try {
       const me = await this.matrix.whoami();
       if (!me) return;
-      const raw = await this.matrix.getAccountData<Record<string, unknown>>(me, CHAT_THEME_ACCOUNT_DATA_TYPE);
+      // Generation chain: canonical first, then each pre-rebrand name. The
+      // NEWEST generation with any content wins — an explicit `{}` reset saved
+      // canonically must keep suppressing an older generation's theme.
+      let raw: Record<string, unknown> | null = null;
+      for (const type of [CHAT_THEME_ACCOUNT_DATA_TYPE, ...LEGACY_CHAT_THEME_ACCOUNT_DATA_TYPES]) {
+        raw = await this.matrix.getAccountData<Record<string, unknown>>(me, type);
+        if (raw !== null && raw !== undefined) break;
+      }
       if (raw === null || raw === undefined) return;
       const cfg = sanitizeChatTheme(raw);
       if (cfg) {

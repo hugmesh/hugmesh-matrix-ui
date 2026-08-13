@@ -5,10 +5,11 @@ import { MatrixService, TimelineEvent } from '../matrix.service';
 import {
   Chat3dHostComponent, MAX_QUEUED_ENVELOPES, MAX_ROSTER_ENTRIES, bytesToBase64,
 } from './chat3d-host.component';
-import { CHAT3D_STATE_TYPE } from './chat3d-state.service';
+import { CHAT3D_STATE_TYPE, LEGACY_CHAT3D_STATE_TYPES } from './chat3d-state.service';
 import { CHAT3D_SCENE_TYPE } from './chat3d-scene.service';
 import { CHAT3D_AVATAR_TYPE, Chat3dAvatarState } from './chat3d-avatar.service';
-import { GAMES_BASE_URL, HostEnvelope, decodeAsGame } from './chat3d-bridge';
+import { CHAT3D_STAGE_TYPE } from './chat3d-stage.service';
+import { GAMES_BASE_URL, HostEnvelope, MAX_MEDIA_BYTES, decodeAsGame } from './chat3d-bridge';
 import { randomChar3dConfig } from './char3d-config';
 import { MeshCallService } from './mesh-call.service';
 import { FaceTrackService } from './face-track.service';
@@ -101,6 +102,19 @@ const sceneEvent = (placements: unknown[]) =>
   stateEvent(CHAT3D_SCENE_TYPE, { placements }, '@member:test');
 
 const placementRow = (surfaceId: string, label: string, kind = 'image') => ({ surfaceId, eventId: '$media1', kind, label });
+
+/** A stage grant as a moderator writes it (sender drives the receive-side PL guard). */
+const stageGrant = (userId: string | null, sender = '@mod:test') =>
+  stateEvent(CHAT3D_STAGE_TYPE, { v: 1, userId }, sender);
+
+/** One `m.room.message` as `/messages` returns it (newest first, `dir: 'b'`). */
+function message(sender: string, body: string, extra: Record<string, unknown> = {}): TimelineEvent {
+  return {
+    type: 'm.room.message', sender, body,
+    content: { msgtype: 'm.text', body, ...extra },
+    eventId: `$msg${sender}${body}`, roomId: '!r:test', originServerTs: 0,
+  } as unknown as TimelineEvent;
+}
 
 const myAvatar = (): Chat3dAvatarState =>
   ({ mode: 'guest', config: randomChar3dConfig('me'), sticker: null, name: 'Guest me' });
@@ -265,11 +279,225 @@ describe('Chat3dHostComponent (iframe embed + §5 postMessage bridge, host side)
     const avatarArgs = decodeAsGame(avatar)!;
     expect(avatarArgs[0]).toBe('@bob:test');
     expect(JSON.parse(avatarArgs[1] as string)).toEqual(randomChar3dConfig('bob'));
-    expect(avatar['mode']).toBe('guest'); // extra (outside §5) billboard hint
+    // NOTHING outside the §5 signature: an extra key is invisible to the game
+    // (it decodes `args` or the signature-named fields and nothing else), so
+    // shipping one only pretended billboard mode was represented.
+    expect(Object.keys(avatar).sort()).toEqual(['args', 'configJson', 't', 'userId', 'v']);
     const place = decodeAsGame(posted.find((e) => e['t'] === 'placeMedia')!)!;
     expect(place[0]).toBe('table-1');
     expect(JSON.parse(place[1] as string)).toEqual({ eventId: '$media1', kind: 'file', label: 'sunset' });
     expect(place[2]).toBeNull(); // file kind = label plaque, no texture
+  });
+
+  it('LEGACY read-fallback: a room enabled under EITHER pre-rebrand config name still boots its 3D view', async () => {
+    // The 1Hz poll's enabled-gate scans the room state itself (it never goes
+    // through Chat3dStateService), so the generation chain must hold HERE too
+    // or every pre-rebrand room turns into a permanent "disabled" screen.
+    for (const legacyType of LEGACY_CHAT3D_STATE_TYPES) {
+      await create([
+        { ...enabledConfig(), type: legacyType },
+        powerLevels(), avatarEvent('@bob:test', 'bob'),
+      ]);
+      deliver({ v: 1, t: 'ready' });
+      expect(component.config()?.enabled).withContext(legacyType).toBeTrue();
+      expect(component.disabledNote()).withContext(legacyType).toBe('');
+      expect(posted.map((e) => e['t'])).withContext(legacyType).toContain('roster');
+      component.ngOnDestroy();
+      posted.length = 0;
+    }
+  });
+
+  it('NAMETAG: a member with no display name falls back to the LOCALPART, not the raw mxid', async () => {
+    // The game builds its nametag from the mxid localpart and discards the
+    // supplied `name`. Whichever side wins that disagreement, the tag has to
+    // read the same — so the host's fallback is now the localpart the game
+    // would derive, instead of the full mxid it used to send.
+    const nameless = stateEvent(
+      CHAT3D_AVATAR_TYPE,
+      { v: 1, mode: 'guest', config: randomChar3dConfig('bob'), sticker: null, name: '' },
+      '@bob:test', '@bob:test',
+    );
+    await create([enabledConfig(), powerLevels(), nameless]);
+    deliver({ v: 1, t: 'ready' });
+    const roster = decodeAsGame(posted.find((e) => e['t'] === 'roster')!)!;
+    expect(JSON.parse(roster[0] as string)).toEqual([{ userId: '@bob:test', name: 'bob' }]);
+  });
+
+  it('BILLBOARD: a sticker member ships configJson null and NO out-of-signature fields', async () => {
+    // The host used to hang mode/sticker/name off the avatar envelope as a
+    // "billboard hint". The game cannot decode a field outside the signature,
+    // and cannot fetch an mxc:// from the games origin even if it could — so
+    // that was a pretence, not a feature. What it CAN do is keep its
+    // deterministic stand-in rig for a member with no config, and take the
+    // display name off the roster row (which carries it for everybody).
+    const billboard = stateEvent(
+      CHAT3D_AVATAR_TYPE,
+      { v: 1, mode: 'billboard', config: null, sticker: 'mxc://t/sticker', name: 'Kusanagi' },
+      '@bill:test', '@bill:test',
+    );
+    await create([enabledConfig(), powerLevels(), billboard]);
+    deliver({ v: 1, t: 'ready' });
+
+    const avatar = posted.filter((e) => e['t'] === 'avatar')
+      .find((e) => decodeAsGame(e)![0] === '@bill:test')!;
+    expect(avatar).toBeDefined();
+    expect(decodeAsGame(avatar)).toEqual(['@bill:test', null]);
+    expect(Object.keys(avatar).sort()).toEqual(['args', 'configJson', 't', 'userId', 'v']);
+    expect(avatar['sticker']).toBeUndefined();
+    expect(avatar['mode']).toBeUndefined();
+
+    // …and the name still reaches the game, in the roster row that documents it
+    // as the nametag source.
+    const roster = decodeAsGame(posted.find((e) => e['t'] === 'roster')!)!;
+    expect(JSON.parse(roster[0] as string)).toEqual([{ userId: '@bill:test', name: 'Kusanagi' }]);
+  });
+
+  it('EXPRESSION PRODUCER: each participant\'s newest message drives their face', async () => {
+    // The game received, dispatched and unit-tested `expression` while the host
+    // had NO producer at all — every avatar wore `neutral` forever. The signal
+    // is the 2D VN stage's: explicit `vn.expression` > sentiment > neutral.
+    matrix.messages.and.resolveTo({
+      start: '', end: '',
+      events: [
+        message('@bob:test', 'lol that is great'),                     // newest → happy
+        message('@bob:test', 'I am so sorry'),                         // older, ignored
+        message('@carol:test', 'whatever', { 'vn.expression': 'smug' }), // explicit wins
+        message('@nobody:test', 'wow!!'),                              // not a participant
+      ],
+    });
+    await create([
+      enabledConfig(), powerLevels(),
+      avatarEvent('@bob:test', 'bob'), avatarEvent('@carol:test', 'carol'),
+    ]);
+    deliver({ v: 1, t: 'ready' });
+
+    const expressions = posted.filter((e) => e['t'] === 'expression').map((e) => decodeAsGame(e)!);
+    expect(expressions).toContain(['@bob:test', 'happy']);
+    expect(expressions).toContain(['@carol:test', 'smug']);
+    // Neither a non-participant nor a silent member gets an envelope (a rig
+    // already starts on `neutral`, and the game ensure()s a body for any id it
+    // is handed — a stray message id would conjure a participant).
+    expect(expressions.map((a) => a[0])).not.toContain('@nobody:test');
+    expect(expressions.map((a) => a[0])).not.toContain('@alice:test');
+  });
+
+  it('EXPRESSION PRODUCER: only CHANGES are pushed, and a message removes the last one', async () => {
+    matrix.messages.and.resolveTo({ start: '', end: '', events: [message('@bob:test', 'haha yes')] });
+    await create([enabledConfig(), powerLevels(), avatarEvent('@bob:test', 'bob')]);
+    deliver({ v: 1, t: 'ready' });
+    const afterReady = posted.length;
+
+    await component.pollOnce();
+    expect(posted.length).toBe(afterReady); // same newest message ⇒ nothing resent
+
+    matrix.messages.and.resolveTo({ start: '', end: '', events: [message('@bob:test', 'ugh, wtf')] });
+    await component.pollOnce();
+    expect(decodeAsGame(posted[posted.length - 1])).toEqual(['@bob:test', 'angry']);
+  });
+
+  it('EXPRESSION PRODUCER: a denied /messages read never disturbs the room', async () => {
+    matrix.messages.and.rejectWith(new Error('403'));
+    await create([enabledConfig(), powerLevels(), avatarEvent('@bob:test', 'bob')]);
+    deliver({ v: 1, t: 'ready' });
+    expect(posted.filter((e) => e['t'] === 'expression').length).toBe(0);
+    expect(posted.filter((e) => e['t'] === 'roster').length).toBe(1); // the rest still ran
+  });
+
+  it('STAGE PRODUCER: a moderator grant lights the platform; a hand-over revokes first', async () => {
+    // Same dead-channel story as `expression`: the game teleports a rig onto the
+    // stage and lights the spotlight on this call, and refuses to invent a grant
+    // of its own in matrix mode because "the host page owns stage grants".
+    await create([
+      enabledConfig(), powerLevels(),
+      avatarEvent('@bob:test', 'bob'), avatarEvent('@carol:test', 'carol'),
+      stageGrant('@bob:test'),
+    ]);
+    deliver({ v: 1, t: 'ready' });
+    expect(posted.filter((e) => e['t'] === 'stage').map((e) => decodeAsGame(e)!))
+      .toEqual([['@bob:test', true]]);
+    expect(component.stageHolder()).toBe('@bob:test');
+
+    // Hand it to carol: the game tracks ONE holder, so bob must be cleared first.
+    matrix.roomState.and.resolveTo(roomState(
+      enabledConfig(), powerLevels(),
+      avatarEvent('@bob:test', 'bob'), avatarEvent('@carol:test', 'carol'),
+      stageGrant('@carol:test'),
+    ));
+    const before = posted.length;
+    await component.pollOnce();
+    expect(posted.slice(before).filter((e) => e['t'] === 'stage').map((e) => decodeAsGame(e)!))
+      .toEqual([['@bob:test', false], ['@carol:test', true]]);
+
+    // Released: the platform empties, and an unchanged poll resends nothing.
+    matrix.roomState.and.resolveTo(roomState(
+      enabledConfig(), powerLevels(),
+      avatarEvent('@bob:test', 'bob'), avatarEvent('@carol:test', 'carol'),
+      stageGrant(null),
+    ));
+    await component.pollOnce();
+    expect(decodeAsGame(posted[posted.length - 1])).toEqual(['@carol:test', false]);
+    const settled = posted.length;
+    await component.pollOnce();
+    expect(posted.length).toBe(settled);
+  });
+
+  it('STAGE PRODUCER: below-PL and non-participant grants never reach the game', async () => {
+    await create([
+      enabledConfig({ stageModOnly: true }), powerLevels(),
+      avatarEvent('@bob:test', 'bob'),
+      stageGrant('@bob:test', '@bob:test'), // bob is not a moderator
+    ]);
+    deliver({ v: 1, t: 'ready' });
+    expect(posted.filter((e) => e['t'] === 'stage').length).toBe(0);
+    expect(component.stageHolder()).toBe('');
+
+    // A moderator grant naming somebody who is NOT in the 3D roster is ignored
+    // too — the game ensure()s a rig for any id it is handed.
+    matrix.roomState.and.resolveTo(roomState(
+      enabledConfig({ stageModOnly: true }), powerLevels(),
+      avatarEvent('@bob:test', 'bob'),
+      stageGrant('@ghost:test'),
+    ));
+    await component.pollOnce();
+    expect(posted.filter((e) => e['t'] === 'stage').length).toBe(0);
+  });
+
+  it('STAGE CONTROL: greyed with a WHY below moderator PL, live for a moderator', async () => {
+    await create([enabledConfig({ stageModOnly: true }), powerLevels(), avatarEvent('@bob:test', 'bob')]);
+    fixture.detectChanges();
+    const button = () => fixture.nativeElement.querySelector('[data-testid="btn-chat3d-stage"]');
+    expect(component.mayDriveStage()).toBeFalse();          // alice is not a moderator
+    expect(button().disabled).toBeTrue();
+    expect(fixture.nativeElement.querySelector('[data-testid="c3d-stage-help"]').textContent)
+      .toContain('moderator-only');
+
+    // Promote alice and re-poll: the control comes alive and writes the grant.
+    matrix.roomState.and.resolveTo(roomState(
+      enabledConfig({ stageModOnly: true }),
+      stateEvent('m.room.power_levels', { users: { '@alice:test': 50 }, users_default: 0, state_default: 50 }),
+      avatarEvent('@bob:test', 'bob'),
+    ));
+    await component.pollOnce();
+    fixture.detectChanges();
+    expect(component.mayDriveStage()).toBeTrue();
+    expect(button().disabled).toBeFalse();
+
+    await component.toggleStage();
+    expect(matrix.setStateEvent).toHaveBeenCalledWith(
+      '!r:test', CHAT3D_STAGE_TYPE, { v: 1, userId: '@alice:test' }, '');
+  });
+
+  it('KILL SWITCH: a disabled room takes the spotlight down with the rest of the world', async () => {
+    await create([
+      enabledConfig(), powerLevels(), avatarEvent('@bob:test', 'bob'), stageGrant('@bob:test'),
+    ]);
+    deliver({ v: 1, t: 'ready' });
+    matrix.roomState.and.resolveTo(roomState(enabledConfig({ enabled: false })));
+    const before = posted.length;
+    await component.pollOnce();
+    expect(posted.slice(before).filter((e) => e['t'] === 'stage').map((e) => decodeAsGame(e)!))
+      .toEqual([['@bob:test', false]]);
+    expect(component.stageHolder()).toBe('');
   });
 
   it('DIFFS: an unchanged poll resends nothing; a removed placement sends clearMedia', async () => {
@@ -639,6 +867,43 @@ describe('Chat3dHostComponent (iframe embed + §5 postMessage bridge, host side)
     matrix.getEvent.and.resolveTo({ eventId: '$media1', content: { url: 'mxc://t/vid' } } as TimelineEvent);
     await component.pollOnce();
     expect(matrix.fetchMediaBytes).toHaveBeenCalledWith('mxc://t/vid', { thumbnail: true, w: 640, h: 360, method: 'scale' });
+  });
+
+  it('MEDIA CAP: an oversized texture is refused on the SEND side and says so in the log', async () => {
+    // The game's own MAX_MEDIA_BYTES lives inside the ArrayBuffer→base64 helper,
+    // which the base64-string transport that actually shipped never reaches —
+    // so before this, NOTHING bounded the payload and each side's comments
+    // assumed the other one did. Same number, both sides, enforced here too.
+    const oversize = new Uint8Array(MAX_MEDIA_BYTES + 1);
+    matrix.getEvent.and.resolveTo({ eventId: '$media1', content: { url: 'mxc://t/huge' } } as TimelineEvent);
+    matrix.fetchMediaBytes.and.resolveTo(oversize.buffer);
+    const warn = spyOn(console, 'warn');
+    await create([
+      enabledConfig(), powerLevels(),
+      sceneEvent([placementRow('table-1', 'huge', 'image')]),
+    ]);
+    deliver({ v: 1, t: 'ready' });
+    const place = decodeAsGame(posted.find((e) => e['t'] === 'placeMedia')!)!;
+    expect(place[2]).toBeNull();                                   // plaque, not 5MB of base64
+    expect(JSON.parse(place[1] as string)).toEqual(jasmine.objectContaining({ label: 'huge' }));
+    expect(warn).toHaveBeenCalled();
+    expect(warn.calls.mostRecent().args.join(' ')).toContain('table-1');
+    expect(warn.calls.mostRecent().args.join(' ')).toContain(String(MAX_MEDIA_BYTES));
+  });
+
+  it('MEDIA CAP: a payload exactly AT the cap still goes through (off-by-one guard)', async () => {
+    const atCap = new Uint8Array(MAX_MEDIA_BYTES);
+    atCap[0] = 7;
+    matrix.getEvent.and.resolveTo({ eventId: '$media1', content: { url: 'mxc://t/big' } } as TimelineEvent);
+    matrix.fetchMediaBytes.and.resolveTo(atCap.buffer);
+    await create([
+      enabledConfig(), powerLevels(),
+      sceneEvent([placementRow('table-1', 'big', 'image')]),
+    ]);
+    deliver({ v: 1, t: 'ready' });
+    const place = decodeAsGame(posted.find((e) => e['t'] === 'placeMedia')!)!;
+    expect(typeof place[2]).toBe('string');
+    expect(atob(place[2] as string).charCodeAt(0)).toBe(7);
   });
 
   it('TEXTURE BYTES fail-soft: an unfetchable image degrades to a label plaque (bytes null)', async () => {

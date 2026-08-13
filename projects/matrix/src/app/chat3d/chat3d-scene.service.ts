@@ -1,12 +1,14 @@
 import { Injectable, inject } from '@angular/core';
-import { MatrixService, TimelineEvent } from '../matrix.service';
+import { MatrixService, TimelineEvent, firstStateEvent } from '../matrix.service';
 import {
   DEFAULT_SCENE_MIN_POWER_LEVEL,
   SceneRateLimiter,
   parseRoomPowerLevels,
   senderMayDriveScene,
 } from '../vn/scenes/vn-scene-moderation';
-import { CHAT3D_STATE_TYPE, Chat3dState, parseChat3dState } from './chat3d-state.service';
+import {
+  CHAT3D_STATE_TYPE, Chat3dState, LEGACY_CHAT3D_STATE_TYPES, parseChat3dState,
+} from './chat3d-state.service';
 
 /**
  * The room STATE event type carrying the shared 3D-room media placements.
@@ -14,7 +16,21 @@ import { CHAT3D_STATE_TYPE, Chat3dState, parseChat3dState } from './chat3d-state
  * readable by any joined member — every participant sees the SAME table/
  * screens/stage dressing (vn.scene precedent).
  */
-export const CHAT3D_SCENE_TYPE = 'systems.hugmesh.chat3d.scene';
+export const CHAT3D_SCENE_TYPE = 'net.hugmesh.chat3d.scene';
+
+/**
+ * Pre-rebrand generations of {@link CHAT3D_SCENE_TYPE}; read-fallback only —
+ * never written. A scene placed under an older branding still lives under that
+ * name, and BOTH old generations are real data — `systems.hugmesh.*` (every
+ * post-squash build before the .net domain move) and `systems.snapdragon.*`
+ * (pre-rebrand rooms). Ordered newest first: reads try the canonical name,
+ * then each generation in order (a newer event wins whenever it exists);
+ * writes stay canonical-only, so the first post-move placement migrates the
+ * room's scene forward.
+ */
+export const LEGACY_CHAT3D_SCENE_TYPES: readonly string[] = [
+  'systems.hugmesh.chat3d.scene', 'systems.snapdragon.chat3d.scene',
+];
 
 /** The scene's media surfaces: 6 round-table spots, 4 wall screens, 1 stage. */
 export const SURFACE_ID_PATTERN = /^(table-[1-6]|screen-[1-4]|stage)$/;
@@ -53,7 +69,7 @@ export interface Chat3dSceneState {
 }
 
 /**
- * Parse a raw `systems.hugmesh.chat3d.scene` state-event content into a
+ * Parse a raw `net.hugmesh.chat3d.scene` state-event content into a
  * {@link Chat3dSceneState}. Tolerant/fail-soft — the content comes from OTHER
  * room members (the enable flow lowers the send PL so ordinary members can
  * write it), so treat it as untrusted: rows without a valid surfaceId/eventId
@@ -144,12 +160,18 @@ export class Chat3dSceneService {
     if (!roomId) {
       return null;
     }
-    try {
-      const raw = await this.matrix.getStateEvent(roomId, CHAT3D_SCENE_TYPE);
-      return parseChat3dSceneState(raw);
-    } catch {
-      return null;
+    // Canonical name first, then each older generation — first parseable wins.
+    // Inline (no helper) so the canonical-hit path keeps the exact promise-hop
+    // depth the pre-chain read had (caller settling is hop-count sensitive).
+    for (const type of [CHAT3D_SCENE_TYPE, ...LEGACY_CHAT3D_SCENE_TYPES]) {
+      try {
+        const state = parseChat3dSceneState(await this.matrix.getStateEvent(roomId, type));
+        if (state !== null) {
+          return state;
+        }
+      } catch { /* unset/denied under this name — try the older generation */ }
     }
+    return null;
   }
 
   /**
@@ -207,11 +229,16 @@ export class Chat3dSceneService {
       events!.find((e) => e.type === type && (e.stateKey ?? '') === '')?.content;
     // The 3D room must be ON for any placement to render — a disabled/unset
     // room resolves to null (and clears nothing: last stays for a re-enable).
-    const config: Chat3dState | null = parseChat3dState(pickContent(CHAT3D_STATE_TYPE));
+    // Canonical config first, then each pre-rebrand generation (read-only).
+    const config: Chat3dState | null = parseChat3dState(
+      firstStateEvent(events, [CHAT3D_STATE_TYPE, ...LEGACY_CHAT3D_STATE_TYPES])?.content,
+    );
     if (!config?.enabled) {
       return null;
     }
-    const sceneEvt = events.find((e) => e.type === CHAT3D_SCENE_TYPE && (e.stateKey ?? '') === '');
+    // The newest-generation scene event wins whenever it exists — a canonical
+    // clear must keep suppressing an older-generation scene, not resurrect it.
+    const sceneEvt = firstStateEvent(events, [CHAT3D_SCENE_TYPE, ...LEGACY_CHAT3D_SCENE_TYPES]);
     if (!sceneEvt) {
       return last;
     }
@@ -225,8 +252,11 @@ export class Chat3dSceneService {
     } else if (config.stageModOnly) {
       // GUARD 3: the STAGE spotlight is moderator-reserved — drop a
       // below-threshold sender's stage placement, keep their other surfaces.
+      // The required-to-send lookup is keyed by the type the event ACTUALLY
+      // arrived under (`sceneEvt.type`): a pre-rebrand room's power levels
+      // carry their per-event override under the legacy name.
       const pl = parseRoomPowerLevels(pickContent('m.room.power_levels'));
-      if (!senderMayDriveScene(pl, sceneEvt.sender, CHAT3D_SCENE_TYPE, floor)) {
+      if (!senderMayDriveScene(pl, sceneEvt.sender, sceneEvt.type, floor)) {
         candidate.placements = candidate.placements.filter((p) => p.surfaceId !== STAGE_SURFACE_ID);
       }
     }

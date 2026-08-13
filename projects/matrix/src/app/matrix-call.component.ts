@@ -92,7 +92,7 @@ const MAX_QUEUED_CANDIDATES = 64;
  *    their mouths driven live from each audio stream through the existing
  *    amplitude machinery (AmplitudeMouthService + openness.ts + the
  *    SpeakingDetector hangover — amplitude-only, no visemes, by product
- *    decision). The shared room scene (systems.hugmesh.vn.scene state) is
+ *    decision). The shared room scene (net.hugmesh.vn.scene state) is
  *    editable in-call via <hug-vn-scene-controls> and polled on the SAME 1Hz
  *    tick as the m.call signalling, so both sides see scene changes; the
  *    newest m.room.message is typewriter-revealed in the stage dialogue box.

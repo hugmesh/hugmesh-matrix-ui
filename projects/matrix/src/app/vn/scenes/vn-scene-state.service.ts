@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { MatrixService } from '../../matrix.service';
+import { MatrixService, firstStateEvent } from '../../matrix.service';
 import {
   DEFAULT_SCENE_MIN_POWER_LEVEL,
   SceneRateLimiter,
@@ -13,7 +13,21 @@ import {
  * every participant sees the SAME stage, and anyone the room's power levels
  * allow can change it.
  */
-export const VN_SCENE_STATE_TYPE = 'systems.hugmesh.vn.scene';
+export const VN_SCENE_STATE_TYPE = 'net.hugmesh.vn.scene';
+
+/**
+ * Pre-rebrand generations of {@link VN_SCENE_STATE_TYPE}; read-fallback only —
+ * never written. A scene staged under an older branding still lives under that
+ * name, and BOTH old generations are real data — `systems.hugmesh.*` (every
+ * post-squash build before the .net domain move) and `systems.snapdragon.*`
+ * (pre-rebrand rooms). Ordered newest first: reads try the canonical name,
+ * then each generation in order (a newer event wins whenever it exists);
+ * writes stay canonical-only, so the first post-move scene change migrates the
+ * room forward.
+ */
+export const LEGACY_VN_SCENE_STATE_TYPES: readonly string[] = [
+  'systems.hugmesh.vn.scene', 'systems.snapdragon.vn.scene',
+];
 
 /** One placed prop in the shared scene: normalized stage coords + scale. */
 export interface VnPlacedProp {
@@ -48,7 +62,7 @@ const MIN_PROP_SCALE = 0.05;
 export const MAX_PROPS = 32;
 
 /**
- * Parse a raw `systems.hugmesh.vn.scene` state-event content into a
+ * Parse a raw `net.hugmesh.vn.scene` state-event content into a
  * {@link VnSceneState}. Tolerant/fail-soft — the content comes from OTHER room
  * members, so treat it as untrusted: non-string sceneIds become null, malformed
  * prop rows are dropped, x/y are clamped into 0..1, scale into a sane range,
@@ -124,12 +138,18 @@ export class VnSceneStateService {
     if (!roomId) {
       return null;
     }
-    try {
-      const raw = await this.matrix.getStateEvent(roomId, VN_SCENE_STATE_TYPE);
-      return parseVnSceneState(raw);
-    } catch {
-      return null;
+    // Canonical name first, then each older generation — first parseable wins.
+    // Inline (no helper) so the canonical-hit path keeps the exact promise-hop
+    // depth the pre-chain read had (caller settling is hop-count sensitive).
+    for (const type of [VN_SCENE_STATE_TYPE, ...LEGACY_VN_SCENE_STATE_TYPES]) {
+      try {
+        const state = parseVnSceneState(await this.matrix.getStateEvent(roomId, type));
+        if (state !== null) {
+          return state;
+        }
+      } catch { /* unset/denied under this name — try the older generation */ }
     }
+    return null;
   }
 
   /**
@@ -190,7 +210,9 @@ export class VnSceneStateService {
     } catch {
       return last;
     }
-    const sceneEvt = events.find((e) => e.type === VN_SCENE_STATE_TYPE && (e.stateKey ?? '') === '');
+    // The newest-generation scene event wins whenever it exists — a canonical
+    // clear must keep suppressing an older-generation scene, not resurrect it.
+    const sceneEvt = firstStateEvent(events, [VN_SCENE_STATE_TYPE, ...LEGACY_VN_SCENE_STATE_TYPES]);
     if (!sceneEvt) {
       // Unset scene — keep whatever we last applied (or a plain stage).
       return last;
@@ -198,8 +220,11 @@ export class VnSceneStateService {
     const pl = parseRoomPowerLevels(
       events.find((e) => e.type === 'm.room.power_levels' && (e.stateKey ?? '') === '')?.content,
     );
-    // GUARD 1: ignore a below-power-level sender's scene entirely.
-    if (!senderMayDriveScene(pl, sceneEvt.sender, VN_SCENE_STATE_TYPE, floor)) {
+    // GUARD 1: ignore a below-power-level sender's scene entirely. The
+    // required-to-send lookup is keyed by the type the event ACTUALLY arrived
+    // under (`sceneEvt.type`) — an older-generation room's power levels carry
+    // their per-event override under that generation's name.
+    if (!senderMayDriveScene(pl, sceneEvt.sender, sceneEvt.type, floor)) {
       return last;
     }
     const candidate = parseVnSceneState(sceneEvt.content);

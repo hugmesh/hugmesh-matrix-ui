@@ -4,6 +4,7 @@ import { randomChar3dConfig } from './char3d-config';
 import {
   CHAT3D_AVATAR_TYPE,
   Chat3dAvatarService,
+  LEGACY_CHAT3D_AVATAR_TYPES,
   Chat3dAvatarState,
   MAX_AVATAR_EVENT_BYTES,
   ROOM_MEMBER_TYPE,
@@ -91,6 +92,18 @@ describe('parseChat3dAvatarState (untrusted per-member content)', () => {
     expect(parseChat3dAvatarState(forgeContent({ name: 'n'.repeat(500) }))!.name.length).toBe(120);
     expect(parseChat3dAvatarState(forgeContent({ name: 7 }))!.name).toBe('');
   });
+
+  it('STRIPS the forbidden display-name code points the BFF refuses to store', () => {
+    // This name is the NAMETAG source: a bidi override here reverses the handle
+    // on the tag NEXT to it, in a scene with no takedown path. The mirror used
+    // to pass the raw string straight through to the roster row.
+    expect(parseChat3dAvatarState(forgeContent({ name: 'Mo\u202Etoko' }))!.name).toBe('Motoko');
+    expect(parseChat3dAvatarState(forgeContent({ name: 'a\u200Bb\u2069c' }))!.name).toBe('abc');
+    expect(parseChat3dAvatarState(forgeContent({ name: 'two\u2028lines' }))!.name).toBe('twolines');
+    // …while an honest international name survives untouched.
+    expect(parseChat3dAvatarState(forgeContent({ name: '\u0414\u043e\u043b\u0433\u0438\u0439' }))!.name)
+      .toBe('\u0414\u043e\u043b\u0433\u0438\u0439');
+  });
 });
 
 describe('Chat3dAvatarService', () => {
@@ -145,6 +158,38 @@ describe('Chat3dAvatarService', () => {
     const avatars = await service.getAvatarStates('!r:test');
     expect(Object.keys(avatars).sort()).toEqual(['@alice:test', '@bob:test']);
     expect(avatars['@bob:test'].mode).toBe('billboard');
+  });
+
+  it('LEGACY read-fallback: an avatar published under EITHER pre-rebrand name still dresses the roster', async () => {
+    // A member who joined the 3D room before a rename (and never re-joined
+    // since) still carries their snapshot under the old type. Both old
+    // generations are real data; publish/retract stay canonical-only.
+    for (const legacyType of LEGACY_CHAT3D_AVATAR_TYPES) {
+      matrix.roomState.and.resolveTo([
+        ...joined('@old:test'),
+        { ...avatarEvent('@old:test', forgeContent({ name: 'era' })), type: legacyType },
+      ]);
+      const avatars = await service.getAvatarStates('!r:test');
+      expect(Object.keys(avatars)).withContext(legacyType).toEqual(['@old:test']);
+      expect(avatars['@old:test'].name).withContext(legacyType).toBe('era');
+    }
+  });
+
+  it('LEGACY read-fallback: the NEWEST generation wins per owner — including a canonical RETRACT', async () => {
+    matrix.roomState.and.resolveTo([
+      ...joined('@alice:test', '@bob:test'),
+      // alice: canonical row + stale legacy row ⇒ the canonical name shows.
+      avatarEvent('@alice:test', forgeContent({ name: 'current' })),
+      { ...avatarEvent('@alice:test', forgeContent({ name: 'stale' })), type: LEGACY_CHAT3D_AVATAR_TYPES[0] },
+      // bob: canonical RETRACT ({} fails the strict parse) over a legacy
+      // snapshot ⇒ bob stays OUT of the roster. Falling back to the legacy row
+      // here would resurrect the very avatar the retract retired.
+      avatarEvent('@bob:test', {}),
+      { ...avatarEvent('@bob:test', forgeContent({ name: 'ghost' })), type: LEGACY_CHAT3D_AVATAR_TYPES[1] },
+    ]);
+    const avatars = await service.getAvatarStates('!r:test');
+    expect(Object.keys(avatars)).toEqual(['@alice:test']);
+    expect(avatars['@alice:test'].name).toBe('current');
   });
 
   it('IDENTITY BIND: skips events whose state_key is not the sender\'s own mxid', async () => {

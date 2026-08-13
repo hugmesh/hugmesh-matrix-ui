@@ -10,6 +10,13 @@
     <button type="button" data-testid="btn-chat3d-media-panel"
             [attr.aria-expanded]="mediaPanelOpen()"
             (click)="toggleMediaPanel()">Channel media</button>
+    <!-- The stage grant: the ONLY producer of the §5 `stage(userId, bool)` call
+         the room has. Offered-but-greyed with WHY-helptext below when the room
+         reserves the spotlight for moderators. -->
+    <button type="button" data-testid="btn-chat3d-stage"
+            [disabled]="!mayDriveStage()" aria-describedby="c3d-stage-help"
+            [attr.aria-pressed]="onStage()"
+            (click)="toggleStage()">{{ onStage() ? 'Leave the stage' : 'Take the stage' }}</button>
     <button type="button" data-testid="btn-chat3d-enter-vr"
             [disabled]="!ready()" aria-describedby="c3d-vr-help"
             (click)="enterVr()">Enter VR</button>
@@ -17,6 +24,17 @@
   <p id="c3d-vr-help" class="field-help" data-testid="c3d-vr-help">
     Starts an immersive WebXR session in a connected headset's browser (e.g. Meta Quest). Without a
     headset the room stays on screen with mouse/keyboard controls.
+  </p>
+  <p id="c3d-stage-help" class="field-help" data-testid="c3d-stage-help">
+    <ng-container *ngIf="stageHelp(); else stageOpen">{{ stageHelp() }}</ng-container>
+    <ng-template #stageOpen>
+      Steps your character onto the spotlit stage platform for everyone in the room. One person
+      holds it at a time.
+    </ng-template>
+  </p>
+  <p *ngIf="stageHolder() && !onStage()" class="field-help" data-testid="chat3d-stage-holder"
+     role="status" aria-live="polite">
+    {{ stageHolder() }} is on the stage.
   </p>
 
   <!-- Honest A/V capability notes (turnAvailable precedent): every dark or

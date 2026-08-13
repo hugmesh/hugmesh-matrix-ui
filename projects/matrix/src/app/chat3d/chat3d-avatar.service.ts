@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { MatrixService, TimelineEvent } from '../matrix.service';
-import { Char3dConfig, parseChar3dConfig } from './char3d-config';
+import { Char3dConfig, parseChar3dConfig, sanitizeDisplayName } from './char3d-config';
 
 /**
  * The room STATE event type carrying each participant's 3D avatar snapshot.
@@ -9,7 +9,22 @@ import { Char3dConfig, parseChar3dConfig } from './char3d-config';
  * member can publish exactly their own avatar and nobody else's. Published on
  * joining the 3D room; read by every participant to dress the roster.
  */
-export const CHAT3D_AVATAR_TYPE = 'systems.hugmesh.chat3d.avatar';
+export const CHAT3D_AVATAR_TYPE = 'net.hugmesh.chat3d.avatar';
+
+/**
+ * Pre-rebrand generations of {@link CHAT3D_AVATAR_TYPE}; read-fallback only —
+ * never written. A member whose avatar was published under an older branding
+ * (and who has not re-joined the 3D view since) still carries it under that
+ * name, and BOTH old generations are real data — `systems.hugmesh.*` (every
+ * post-squash build before the .net domain move) and `systems.snapdragon.*`
+ * (pre-rebrand rooms). The roster read accepts all three, PER state_key, with
+ * the NEWEST generation that has any row for an owner winning outright —
+ * including a newer RETRACT (`{}`), which must keep suppressing the stale
+ * older snapshot it retired. Publish/retract stay canonical-only.
+ */
+export const LEGACY_CHAT3D_AVATAR_TYPES: readonly string[] = [
+  'systems.hugmesh.chat3d.avatar', 'systems.snapdragon.chat3d.avatar',
+];
 
 /** LIMIT: serialized avatar-event content byte cap (≤8KB — a Char3DConfig is
  *  ~1-2KB; anything bigger is hostile padding, not a character). */
@@ -62,7 +77,7 @@ export interface Chat3dAvatarState {
 }
 
 /**
- * Parse a raw `systems.hugmesh.chat3d.avatar` state-event content into a
+ * Parse a raw `net.hugmesh.chat3d.avatar` state-event content into a
  * {@link Chat3dAvatarState}. STRICT where the §3 BFF validation is strict —
  * this content is OTHER members' input straight into every participant's Godot
  * scene:
@@ -98,7 +113,11 @@ export function parseChat3dAvatarState(raw: unknown): Chat3dAvatarState | null {
   if (typeof mode !== 'string' || !(AVATAR_MODES as readonly string[]).includes(mode)) {
     return null;
   }
-  const name = typeof obj['name'] === 'string' ? obj['name'].slice(0, MAX_AVATAR_NAME_LENGTH) : '';
+  // The nametag source — through the SAME display-name gate the BFF applies to
+  // every name it stores: a U+202E here does not corrupt the wearer's own tag,
+  // it visually reverses a NEIGHBOUR'S handle on the floating tag next to it,
+  // and a 3D scene has no takedown path.
+  const name = sanitizeDisplayName(obj['name'], MAX_AVATAR_NAME_LENGTH);
   if (mode === 'billboard') {
     const sticker = obj['sticker'];
     if (typeof sticker !== 'string' || !sticker.startsWith('mxc://')
@@ -223,8 +242,26 @@ export class Chat3dAvatarService {
     }
     const joined = joinedMembersFrom(events);
     const out: Record<string, Chat3dAvatarState> = {};
+    // Generation rank per owner: only the NEWEST generation that has ANY row
+    // for that owner is considered (even a `{}` retract) — the newer event is
+    // the newer word, and a retract must not resurrect the older snapshot it
+    // retired. Lower index = newer generation.
+    const generations: readonly string[] = [CHAT3D_AVATAR_TYPE, ...LEGACY_CHAT3D_AVATAR_TYPES];
+    const newestGen = new Map<string, number>();
     for (const evt of events) {
-      if (evt.type !== CHAT3D_AVATAR_TYPE) {
+      const gen = generations.indexOf(evt.type);
+      if (gen < 0) {
+        continue;
+      }
+      const key = evt.stateKey ?? '';
+      const prev = newestGen.get(key);
+      if (prev === undefined || gen < prev) {
+        newestGen.set(key, gen);
+      }
+    }
+    for (const evt of events) {
+      const gen = generations.indexOf(evt.type);
+      if (gen < 0 || gen !== newestGen.get(evt.stateKey ?? '')) {
         continue;
       }
       const owner = evt.stateKey ?? '';

@@ -109,6 +109,16 @@ export interface RoomMember {
  */
 export const MESH_EVENT_CONTENT_FIELD = 'com.hugmesh.mesh';
 
+/**
+ * Pre-rebrand events persist the old field name; read-fallback only — never
+ * written (the UI never writes this field at all — the bridge appservice
+ * attaches it). Events bridged before the HugMesh rebrand carry their
+ * provenance under this key; {@link MatrixService.mapEvent} reads the
+ * canonical field first and falls back to this one (canonical wins when both
+ * exist), so old bridged messages keep their "via LoRa mesh" badge.
+ */
+export const LEGACY_MESH_EVENT_CONTENT_FIELD = 'com.snapdragon.mesh';
+
 /** Matches senders inside the mesh bridge appservice's EXCLUSIVE `@mesh-.*`
  *  user namespace — only the bridge can register those users, so the sender
  *  prefix alone is a trustworthy "came over the radio" signal. */
@@ -221,6 +231,30 @@ export interface TimelineEvent {
    * malformed fragment, so callers can trust every field when present.
    */
   mesh?: MeshEventInfo;
+}
+
+/**
+ * The room-state event for the FIRST of `types` that exists (state_key `''`),
+ * or undefined when none does — the read side of the wire-name generation
+ * chains (`net.hugmesh.*` ⇠ `systems.hugmesh.*` ⇠ `systems.snapdragon.*`; see
+ * the LEGACY_*_TYPES constants beside each canonical type).
+ *
+ * PRESENCE wins, not parseability: a newer-generation event is returned even
+ * when its content no longer parses, because it is the newer word — e.g. a
+ * canonical `{}` retract/clear must keep suppressing the older-generation
+ * event it retired, not resurrect it. Callers pass the chain newest-first.
+ */
+export function firstStateEvent(
+  events: readonly TimelineEvent[],
+  types: readonly string[],
+): TimelineEvent | undefined {
+  for (const type of types) {
+    const evt = events.find((e) => e.type === type && (e.stateKey ?? '') === '');
+    if (evt) {
+      return evt;
+    }
+  }
+  return undefined;
 }
 
 export interface Reaction {
@@ -446,8 +480,12 @@ export class MatrixService {
     // Optional radio-provenance fragment the mesh bridge appservice attaches to
     // bridged events (custom field); malformed/absent ⇒ undefined and the
     // timeline renders no mesh badge off the content (the @mesh-* sender
-    // namespace still marks the event as bridged).
-    const mesh = parseMeshEventInfo(content[MESH_EVENT_CONTENT_FIELD]);
+    // namespace still marks the event as bridged). Canonical field first, then
+    // the pre-rebrand legacy name (read-only) so old bridged events keep their
+    // badge.
+    const mesh = parseMeshEventInfo(
+      content[MESH_EVENT_CONTENT_FIELD] ?? content[LEGACY_MESH_EVENT_CONTENT_FIELD],
+    );
     if (mesh) {
       ev.mesh = mesh;
     }

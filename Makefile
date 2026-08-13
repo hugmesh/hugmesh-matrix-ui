@@ -7,7 +7,7 @@
 # safe to run anywhere.
 
 # Where to find / clone the shared pen-test harness (DAST). Override as needed.
-GENERATOR_REPO ?= https://github.com/hugmesh-net/hugmesh-generator.git
+GENERATOR_REPO ?= https://github.com/hugmesh/hugmesh-generator.git
 PENTEST_HARNESS_DIR ?= $(CURDIR)/.pentest-harness/tests/pentest
 # Set DAST_TARGET_URL to a running env-test-build to drive the full DAST harness.
 DAST_TARGET_URL ?=

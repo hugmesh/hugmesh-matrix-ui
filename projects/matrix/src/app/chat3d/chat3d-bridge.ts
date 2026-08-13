@@ -79,6 +79,22 @@ export interface HostEnvelope {
   [key: string]: unknown;
 }
 
+/**
+ * LIMIT: largest RAW texture payload one `placeMedia` may carry (4 MiB) — the
+ * numeric twin of `chat3d_bridge.gd`'s `MAX_MEDIA_BYTES`, enforced on BOTH
+ * sides of the bridge.
+ *
+ * The game's copy of this cap lives inside `toB64()`, which only runs for an
+ * ArrayBuffer/TypedArray argument — and the transport that actually shipped is
+ * a base64 STRING (the game JSON.stringify()s its inbound queue, which flattens
+ * a structured clone to `{}`), so on the real wire that cap is unreachable
+ * code. Each side's comments then assumed the OTHER one bounded the payload,
+ * which is how a 40 MB attachment became a 53 MB base64 string posted into an
+ * iframe. The host refuses to send one (falling back to the label plaque and
+ * SAYING so in the console); the game refuses to decode one.
+ */
+export const MAX_MEDIA_BYTES = 4 * 1024 * 1024;
+
 /** Room-scale bound for pose coordinates (metres from origin — the chamber is
  *  a ~20m circle; 64 leaves generous slack while stopping runaway floats). */
 export const MAX_POSE_COORD = 64;
@@ -186,7 +202,26 @@ export const HOST_CALL_SIGNATURES: Readonly<Record<HostToGameType, readonly stri
 /** One roster row the game renders a participant from. */
 export interface RosterEntry {
   userId: string;
+  /** The nametag text. NEVER empty and never a bare mxid — see
+   *  {@link mxidLocalpart} for why the fallback matters. */
   name: string;
+}
+
+/**
+ * `@alice:server` → `alice`; anything unparseable comes back unchanged.
+ *
+ * The roster row's `name` is documented as the game's nametag source, but the
+ * game builds its tag from the mxid LOCALPART and discards the supplied name.
+ * Whichever side wins that disagreement, the tag must read the same — so the
+ * host's fallback for a member with no display name is now the localpart the
+ * game would have derived, not the full mxid it used to send. A game that
+ * starts honouring `name` then renders exactly what a game that ignores it
+ * renders, instead of flipping every nameless member's tag from `alice` to
+ * `@alice:server` the day the sibling half lands.
+ */
+export function mxidLocalpart(userId: string): string {
+  const m = /^@([^:]+):/.exec(userId);
+  return m ? m[1] : userId;
 }
 
 /**
@@ -225,6 +260,13 @@ export const hostMsg = {
    * through `JSON.stringify` before GDScript ever sees it, so a structured
    * clone serializes to `{}` and the decoder (`Marshalls.base64_to_raw`) gets
    * nothing. null = meta-only plaque.
+   *
+   * The bytes are the UNTRANSCODED original Matrix media (this page has no
+   * image encoder, and re-encoding every attachment to PNG in the main thread
+   * is not a trade we want), so `pngBase64` is a legacy argument NAME — the
+   * payload is whatever the uploader posted (PNG/JPEG/WebP/GIF) and the game
+   * tries each decoder in turn. Callers must keep the raw payload at or under
+   * {@link MAX_MEDIA_BYTES}.
    */
   placeMedia: (surfaceId: string, meta: { eventId: string; kind: string; label: string }, pngBase64: string | null): HostEnvelope =>
     envelope('placeMedia', [surfaceId, JSON.stringify(meta), pngBase64]),

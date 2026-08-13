@@ -10,6 +10,7 @@ import {
   chat3dFrameUrl,
   decodeAsGame,
   hostMsg,
+  mxidLocalpart,
   originAllowed,
   parseGameMessage,
 } from './chat3d-bridge';
@@ -301,5 +302,18 @@ describe('hostMsg (outbound §5 envelope builders)', () => {
         expect(viaNamed).withContext(env['t'] as string).toEqual(viaArgs);
       }
     });
+  });
+});
+
+describe('mxidLocalpart (the nametag fallback both sides must agree on)', () => {
+  it('reduces an mxid to the localpart the game derives from the id alone', () => {
+    expect(mxidLocalpart('@alice:example.org')).toBe('alice');
+    expect(mxidLocalpart('@a.b-c_d:matrix.hugmesh.systems')).toBe('a.b-c_d');
+  });
+
+  it('leaves anything that is not an mxid untouched (never returns empty)', () => {
+    expect(mxidLocalpart('alice')).toBe('alice');
+    expect(mxidLocalpart('@nocolon')).toBe('@nocolon');
+    expect(mxidLocalpart('')).toBe('');
   });
 });

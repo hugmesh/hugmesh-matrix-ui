@@ -20,7 +20,7 @@
         <span aria-hidden="true">📹</span>
       </a>
       <!-- 3D room (Shadows of the Net): rendered ONLY when the room's
-           systems.hugmesh.chat3d state parses enabled — no dangling door
+           net.hugmesh.chat3d state parses enabled — no dangling door
            into a room that will refuse to load. -->
       <a *ngIf="chat3dEnabled()" [routerLink]="['/rooms', rid, 'chat3d']"
          data-testid="btn-chat3d" aria-label="3D room (Shadows of the Net)"

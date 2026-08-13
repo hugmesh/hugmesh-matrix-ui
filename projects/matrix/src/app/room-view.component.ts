@@ -48,7 +48,7 @@ export class RoomViewComponent implements OnInit, OnChanges, OnDestroy {
    *  a display name + avatar for the "Read by <name>" indicator. */
   readonly members = signal<RoomMember[]>([]);
 
-  /** Whether this room's `systems.hugmesh.chat3d` state parses ENABLED —
+  /** Whether this room's `net.hugmesh.chat3d` state parses ENABLED —
    *  the 3D-room button renders only then (an off/unset/unreadable state
    *  simply hides the door; the join route re-checks for deep links). */
   readonly chat3dEnabled = signal(false);

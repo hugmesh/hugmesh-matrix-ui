@@ -5,22 +5,34 @@ import {
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
-import { MatrixService } from '../matrix.service';
-import { Chat3dState, Chat3dStateService, parseChat3dState, CHAT3D_STATE_TYPE } from './chat3d-state.service';
+import { MatrixService, firstStateEvent } from '../matrix.service';
+import {
+  Chat3dState, Chat3dStateService, parseChat3dState, CHAT3D_STATE_TYPE, LEGACY_CHAT3D_STATE_TYPES,
+} from './chat3d-state.service';
 import { Chat3dSceneService, Chat3dPlacement } from './chat3d-scene.service';
 import { Chat3dAvatarService, Chat3dAvatarState } from './chat3d-avatar.service';
 import {
-  GAMES_BASE_URL, GameMessage, HostEnvelope, chat3dFrameUrl, hostMsg,
-  originAllowed, parseGameMessage, RosterEntry,
+  GAMES_BASE_URL, GameMessage, HostEnvelope, MAX_MEDIA_BYTES, chat3dFrameUrl, hostMsg,
+  mxidLocalpart, originAllowed, parseGameMessage, RosterEntry,
 } from './chat3d-bridge';
 import { MeshCallService } from './mesh-call.service';
 import { FaceTrackService } from './face-track.service';
 import { blendshapesToBase64 } from './av-channel';
 import { RoomMediaPanelComponent } from './room-media-panel.component';
+import { Chat3dStageService } from './chat3d-stage.service';
+import { DEFAULT_EXPRESSION, Expression, expressionForEvent } from '../vn/expression';
 
 /** Cadence of the room-state poll feeding the game (matches the 1Hz
  *  matrix-call pump precedent — room state is SLOW config, not motion). */
 export const CHAT3D_POLL_MS = 1_000;
+
+/**
+ * How many recent timeline events the expression pass scans per poll. It only
+ * needs the NEWEST message per participant, and the room caps at 16 of them, so
+ * a short window is enough: a member who has not spoken inside it simply
+ * resolves to `neutral`, which is what their avatar already wears.
+ */
+export const EXPRESSION_SCAN_LIMIT = 30;
 
 /** LIMIT: most placement texture byte-buffers cached (11 surfaces exist;
  *  a few re-placements should not grow the cache unboundedly). */
@@ -74,10 +86,12 @@ export function bytesToBase64(buffer: ArrayBuffer): string {
  *
  *   - on join it publishes MY avatar snapshot as room state, then
  *   - polls the room state at {@link CHAT3D_POLL_MS} (single roomState fetch
- *     per tick feeding the enabled-check, the MODERATED scene read and the
- *     avatar roster) and pushes diffs into the game (roster/avatar/
- *     placeMedia/clearMedia — image placements carry REAL texture bytes,
+ *     per tick feeding the enabled-check, the MODERATED scene read, the avatar
+ *     roster and the stage grant) and pushes diffs into the game (roster/avatar/
+ *     placeMedia/clearMedia/stage — image placements carry REAL texture bytes,
  *     video placements their poster frame),
+ *   - derives each participant's face `expression` from their newest timeline
+ *     message on the same tick (the 2D VN stage's `expressionForEvent` signal),
  *   - joins the {@link MeshCallService} A/V mesh (voice + the `chat3d` data
  *     channel) and relays: peers' poses/openness/blendshapes/speaking INTO
  *     the game, my localPose/blendshapes OUT to the peers,
@@ -113,6 +127,7 @@ export class Chat3dHostComponent implements OnInit, OnDestroy {
   private readonly chat3dState = inject(Chat3dStateService);
   private readonly scene = inject(Chat3dSceneService);
   private readonly avatars = inject(Chat3dAvatarService);
+  private readonly stageGrants = inject(Chat3dStageService);
   private readonly sanitizer = inject(DomSanitizer);
   private readonly gamesBase = inject(GAMES_BASE_URL);
   readonly mesh = inject(MeshCallService);
@@ -145,6 +160,17 @@ export class Chat3dHostComponent implements OnInit, OnDestroy {
   readonly config = signal<Chat3dState | null>(null);
   /** Whether the channel-media panel is shown. */
   readonly mediaPanelOpen = signal(false);
+  /** Who currently holds the spotlit stage platform ('' = nobody). */
+  readonly stageHolder = signal('');
+  /** Whether I may write the stage grant in this room (moderator, or any member
+   *  when the room turned `stageModOnly` off) — the button's gate. */
+  readonly mayDriveStage = signal(false);
+  /** True while I am the stage holder (the button flips to "Leave the stage"). */
+  readonly onStage = computed(() => !!this.myUserId() && this.stageHolder() === this.myUserId());
+  /** WHY-helptext when the stage control is greyed (never hidden). */
+  readonly stageHelp = computed(() => (this.mayDriveStage()
+    ? ''
+    : 'The stage spotlight is moderator-only in this room (stageModOnly) — a moderator can hand it over.'));
 
   /**
    * The honest A/V capability notes (one per dark/degraded leg, all visible
@@ -225,6 +251,10 @@ export class Chat3dHostComponent implements OnInit, OnDestroy {
   private pushedPlacements = new Map<string, string>();
   /** Last-pushed avatar per user (JSON) for diffing. */
   private pushedAvatars = new Map<string, string>();
+  /** Last-pushed expression per user (absent = the `neutral` every rig starts on). */
+  private pushedExpressions = new Map<string, Expression>();
+  /** Last-pushed stage holder ('' = nobody) for diffing. */
+  private pushedStage = '';
   /** Last-pushed roster JSON (resent only on change). */
   private pushedRoster = '';
   /** Current placements by surface (for the mediaActivate label lookup). */
@@ -317,8 +347,14 @@ export class Chat3dHostComponent implements OnInit, OnDestroy {
     for (const surfaceId of this.pushedPlacements.keys()) {
       this.send(hostMsg.clearMedia(surfaceId));
     }
+    if (this.pushedStage) {
+      this.send(hostMsg.stage(this.pushedStage, false)); // the spotlight goes out too
+    }
     this.pushedRoster = '';
     this.pushedAvatars.clear();
+    this.pushedExpressions.clear();
+    this.pushedStage = '';
+    this.stageHolder.set('');
     this.pushedPlacements.clear();
     this.currentPlacements = new Map();
   }
@@ -336,8 +372,11 @@ export class Chat3dHostComponent implements OnInit, OnDestroy {
     } catch {
       return; // transient — keep the last pushed world
     }
+    // Canonical config first, then each pre-rebrand generation (read-only —
+    // see LEGACY_CHAT3D_STATE_TYPES): a room enabled under an older branding
+    // must still boot its 3D view.
     const config = parseChat3dState(
-      events.find((e) => e.type === CHAT3D_STATE_TYPE && (e.stateKey ?? '') === '')?.content,
+      firstStateEvent(events, [CHAT3D_STATE_TYPE, ...LEGACY_CHAT3D_STATE_TYPES])?.content,
     );
     this.config.set(config);
     if (!config?.enabled) {
@@ -377,7 +416,13 @@ export class Chat3dHostComponent implements OnInit, OnDestroy {
       keep.add(me); // never drop MY OWN row — I must see my own character
     }
     const kept = [...keep].sort().map((userId) => [userId, avatarStates[userId]] as const);
-    const roster: RosterEntry[] = kept.map(([userId, s]) => ({ userId, name: s.name || userId }));
+    const roster: RosterEntry[] = kept.map(([userId, s]) => ({
+      userId,
+      // Fall back to the LOCALPART, not the full mxid: that is the tag the game
+      // draws today from the id alone, so the nametag reads the same whether or
+      // not the game honours this field (see mxidLocalpart).
+      name: s.name || mxidLocalpart(userId),
+    }));
     const rosterJson = JSON.stringify(roster);
     if (rosterJson !== this.pushedRoster) {
       this.pushedRoster = rosterJson;
@@ -392,12 +437,30 @@ export class Chat3dHostComponent implements OnInit, OnDestroy {
       const json = JSON.stringify(s);
       if (this.pushedAvatars.get(userId) !== json) {
         this.pushedAvatars.set(userId, json);
-        this.send(this.avatarEnvelope(userId, s));
+        // ONLY the §5 signature — `mode`/`sticker`/`name` used to ride along
+        // outside it as a "forward-compatible slot for billboard mode". They
+        // were never forward-compatible: the game reads either an `args` array
+        // or the signature-named fields, so an extra key is invisible to it,
+        // and a `mxc://` URL is unusable from the games origin anyway (no
+        // access token, not an HTTP URL) — a sticker could only ever reach the
+        // room as BYTES, over a channel neither side has. A billboard member
+        // therefore ships `configJson: null` and the game keeps its
+        // deterministic stand-in rig for them, which is what the join menu now
+        // says will happen. `name` is not lost: it rides in every roster row.
+        this.send(hostMsg.avatar(userId, s.config));
       }
     }
     // The avatar-state publishers ARE the room's 3D participants — feed the
     // mesh so pairs form/teardown as members join/leave the 3D view.
     this.mesh.setParticipants(kept.map(([userId]) => userId));
+
+    // The two channels the game receives from nobody until now: face expression
+    // and the stage grant. Both are scoped to `keep` — the game `ensure()`s an
+    // avatar for any user id it is handed, so a message about a non-participant
+    // conjures a rig for somebody who is not in the room.
+    this.mayDriveStage.set(this.stageGrants.mayDriveStage(events, me));
+    this.pushStage(await this.stageGrants.getStageHolder(this.roomId, events), keep);
+    await this.pushExpressions(keep);
 
     // Moderated scene → placeMedia/clearMedia diffs. Image placements carry
     // REAL texture bytes; video placements their server-side poster frame.
@@ -425,6 +488,99 @@ export class Chat3dHostComponent implements OnInit, OnDestroy {
       }
     }
     this.currentPlacements = next;
+  }
+
+  /**
+   * PRODUCER for the §5 `expression(userId, label)` channel — the SAME live
+   * signal the 2D VN stage runs on (`expressionForEvent`: an explicit
+   * `vn.expression` field > the rule-based sentiment derivation of the body >
+   * `neutral`), applied per participant instead of only to the newest sender.
+   *
+   * The game received, dispatched and unit-tested this channel while the host
+   * had no producer at all, so every avatar in every 3D room wore `neutral`
+   * forever. One `/messages` page per poll answers "what is each participant's
+   * newest message?"; the 3D view is its own route, so there is no live sync
+   * feed here to piggy-back on the way `room-view` does.
+   *
+   * Diffed against the last pushed label, with "never pushed" treated as the
+   * `neutral` every rig already starts on — so a quiet room sends nothing.
+   */
+  private async pushExpressions(roster: Set<string>): Promise<void> {
+    for (const userId of [...this.pushedExpressions.keys()]) {
+      if (!roster.has(userId)) {
+        this.pushedExpressions.delete(userId); // left the room — re-push if they return
+      }
+    }
+    if (!roster.size) {
+      return;
+    }
+    let page;
+    try {
+      page = await this.matrix.messages(this.roomId, { dir: 'b', limit: EXPRESSION_SCAN_LIMIT });
+    } catch {
+      return; // denied/transient — keep the expressions the game already has
+    }
+    // `dir: 'b'` pages BACKWARDS: newest first, so the first hit per sender IS
+    // their latest message.
+    const latest = new Map<string, Expression>();
+    for (const ev of page.events ?? []) {
+      if (ev.type !== 'm.room.message' || ev.redacted) {
+        continue;
+      }
+      if (!roster.has(ev.sender) || latest.has(ev.sender)) {
+        continue;
+      }
+      latest.set(ev.sender, expressionForEvent(ev.content, ev.body));
+    }
+    for (const userId of roster) {
+      const next = latest.get(userId) ?? DEFAULT_EXPRESSION;
+      const prev = this.pushedExpressions.get(userId) ?? DEFAULT_EXPRESSION;
+      if (next === prev) {
+        continue;
+      }
+      this.pushedExpressions.set(userId, next);
+      this.send(hostMsg.expression(userId, next));
+    }
+  }
+
+  /**
+   * PRODUCER for the §5 `stage(userId, bool)` channel — the moderator-gated
+   * stage grant ({@link Chat3dStageService}), diffed into the revoke/grant pair
+   * the game expects (it tracks ONE holder, so handing the platform over means
+   * clearing the previous one first).
+   *
+   * Same dead-channel story as `expression`: the game teleports a rig onto the
+   * platform and lights the spotlight on this call, and refuses to invent a
+   * grant of its own in matrix mode because the host page owns them. Nothing
+   * here owned them. A grant naming somebody outside the 3D roster is ignored.
+   */
+  private pushStage(holder: string | null, roster: Set<string>): void {
+    const next = holder && roster.has(holder) ? holder : '';
+    this.stageHolder.set(next);
+    if (next === this.pushedStage) {
+      return;
+    }
+    if (this.pushedStage) {
+      this.send(hostMsg.stage(this.pushedStage, false));
+    }
+    if (next) {
+      this.send(hostMsg.stage(next, true));
+    }
+    this.pushedStage = next;
+  }
+
+  /**
+   * Take the stage, or step off it. Optimistic only in the UI sense: the poll
+   * re-reads the room state and is the single source of what the game is told,
+   * so a refused PUT simply leaves the platform where it was.
+   */
+  async toggleStage(): Promise<void> {
+    const me = this.myUserId();
+    if (!me || !this.mayDriveStage()) {
+      return;
+    }
+    await this.stageGrants.setStageHolder(this.roomId, this.onStage() ? null : me);
+    await this.pollOnce();
   }
 
   /**
@@ -456,22 +612,26 @@ export class Chat3dHostComponent implements OnInit, OnDestroy {
     } catch {
       bytes = null; // plaque fallback
     }
+    // SIZE CAP (both sides of the bridge enforce the same number). A Matrix
+    // room happily carries a 40 MB attachment; base64 inflates it by 4/3 and
+    // the whole string is then structured-cloned into the iframe and
+    // JSON-parsed inside the wasm heap. The game's own cap sits in a code path
+    // only an ArrayBuffer argument reaches, so on the base64 transport that
+    // actually shipped it never runs — nothing bounded this at all.
+    // Refuse it HERE and say why; the surface still gets its label plaque.
+    if (bytes && bytes.byteLength > MAX_MEDIA_BYTES) {
+      console.warn(
+        `[chat3d] placement ${p.surfaceId} (${p.eventId}) is ${bytes.byteLength} bytes — over the `
+        + `${MAX_MEDIA_BYTES}-byte texture cap; sending the label plaque instead of the image.`,
+      );
+      bytes = null;
+    }
     if (this.textureCache.size >= MAX_TEXTURE_CACHE) {
       // Simple full reset — 11 surfaces exist, this is a rare housekeeping.
       this.textureCache.clear();
     }
     this.textureCache.set(cacheKey, bytes);
     return bytes;
-  }
-
-  /**
-   * The avatar envelope for one participant — the §5 `avatar(userId,
-   * configJson)` call plus the mode/sticker/name fields billboard participants
-   * need (config is null in billboard mode; the game renders the sticker
-   * sprite instead).
-   */
-  private avatarEnvelope(userId: string, s: Chat3dAvatarState): HostEnvelope {
-    return { ...hostMsg.avatar(userId, s.config), mode: s.mode, sticker: s.sticker, name: s.name };
   }
 
   /**

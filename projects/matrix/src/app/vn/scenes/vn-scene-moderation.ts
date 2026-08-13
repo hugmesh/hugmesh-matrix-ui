@@ -1,5 +1,5 @@
 /**
- * MODERATION guards for the shared VN scene (`systems.hugmesh.vn.scene` room
+ * MODERATION guards for the shared VN scene (`net.hugmesh.vn.scene` room
  * STATE). The scene is per-room latest-wins state that any member the room's
  * power levels allow can write — and at some room presets that is EVERY member,
  * so a hostile peer could flip or spam the stage. These pure helpers let the
@@ -72,6 +72,12 @@ export function parseRoomPowerLevels(raw: unknown): RoomPowerLevels {
  * (the per-event override, else `state_default`), floored at `floor` so even a
  * mis-configured room (e.g. `state_default` 0) still demands at least a
  * moderator. When PL is unknown, the floor applies.
+ *
+ * The `events` lookup is keyed by exact type NAME, so dual-read callers must
+ * pass the type the event ACTUALLY arrived under (canonical or a LEGACY_*
+ * generation) — an older-generation room's per-event override names the older
+ * type, and looking the canonical name up there would miss it. The floor makes
+ * that miss restrictive, never permissive.
  */
 export function requiredScenePowerLevel(
   pl: RoomPowerLevels | null | undefined,

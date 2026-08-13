@@ -8,7 +8,20 @@ import { MatrixService } from '../matrix.service';
  * decide which rooms it relays, and anyone the room's power levels allow can
  * change it.
  */
-export const MESH_BRIDGE_STATE_TYPE = 'systems.hugmesh.mesh.bridge';
+export const MESH_BRIDGE_STATE_TYPE = 'net.hugmesh.mesh.bridge';
+
+/**
+ * Pre-rebrand generations of {@link MESH_BRIDGE_STATE_TYPE}; read-fallback
+ * only — never written. A room bridged under an older branding still carries
+ * its setting under that name, and BOTH old generations are real data —
+ * `systems.hugmesh.*` (every post-squash build before the .net domain move)
+ * and `systems.snapdragon.*` (pre-rebrand rooms). Ordered newest first: reads
+ * try the canonical name, then each generation in order; writes stay
+ * canonical-only, so the first post-move save migrates the room forward.
+ */
+export const LEGACY_MESH_BRIDGE_STATE_TYPES: readonly string[] = [
+  'systems.hugmesh.mesh.bridge', 'systems.snapdragon.mesh.bridge',
+];
 
 /** Device id a malformed/absent `device` falls back to (the bridge's stock radio). */
 export const DEFAULT_MESH_DEVICE = 'default';
@@ -35,7 +48,7 @@ export interface MeshBridgeState {
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
 
 /**
- * Parse a raw `systems.hugmesh.mesh.bridge` state-event content into a
+ * Parse a raw `net.hugmesh.mesh.bridge` state-event content into a
  * {@link MeshBridgeState}. Tolerant/fail-soft — the content comes from OTHER
  * room members, so treat it as untrusted: `enabled` is strict (`=== true`, a
  * truthy string never turns a radio bridge on), a non-token/overlong `device`
@@ -90,12 +103,19 @@ export class MeshBridgeStateService {
     if (!roomId) {
       return null;
     }
-    try {
-      const raw = await this.matrix.getStateEvent(roomId, MESH_BRIDGE_STATE_TYPE);
-      return parseMeshBridgeState(raw);
-    } catch {
-      return null;
+    // Canonical name first, then each older generation — first parseable wins.
+    // Inline (no helper) so the canonical-hit path keeps the exact promise-hop
+    // depth the pre-chain read had — settling in the callers' specs is
+    // empirically hop-count sensitive (see room-settings' load notes).
+    for (const type of [MESH_BRIDGE_STATE_TYPE, ...LEGACY_MESH_BRIDGE_STATE_TYPES]) {
+      try {
+        const state = parseMeshBridgeState(await this.matrix.getStateEvent(roomId, type));
+        if (state !== null) {
+          return state;
+        }
+      } catch { /* unset/denied under this name — try the older generation */ }
     }
+    return null;
   }
 
   /**

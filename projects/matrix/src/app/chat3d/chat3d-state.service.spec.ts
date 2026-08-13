@@ -4,6 +4,7 @@ import {
   CHAT3D_STATE_TYPE,
   Chat3dState,
   Chat3dStateService,
+  LEGACY_CHAT3D_STATE_TYPES,
   parseChat3dState,
 } from './chat3d-state.service';
 
@@ -80,7 +81,7 @@ describe('Chat3dStateService', () => {
     service = TestBed.inject(Chat3dStateService);
   });
 
-  it('reads the setting from the systems.hugmesh.chat3d state event', async () => {
+  it('reads the setting from the net.hugmesh.chat3d state event', async () => {
     matrix.getStateEvent.and.resolveTo({ enabled: true, style: 'noir', maxParticipants: 6, allowMedia: true, stageModOnly: true });
 
     const state = await service.getChat3dState('!room:snap');
@@ -96,8 +97,43 @@ describe('Chat3dStateService', () => {
     expect(await service.getChat3dState('!room:snap')).toBeNull();
 
     expect(await service.getChat3dState('')).toBeNull();
-    // No room id must not even hit the wire.
-    expect(matrix.getStateEvent).toHaveBeenCalledTimes(2);
+    // No room id must not even hit the wire — each wired read walks the
+    // 3-generation name chain (canonical + 2 legacy), so two reads = 6 GETs.
+    expect(matrix.getStateEvent).toHaveBeenCalledTimes(6);
+  });
+
+  it('LEGACY read-fallback: a setting saved under EITHER pre-rebrand name still parses', async () => {
+    // Pre-.net-move rooms persist systems.hugmesh.*; pre-rebrand rooms persist
+    // systems.snapdragon.*. Both are real data the read chain must reach —
+    // writes never touch them (see the canonical-write assertions below).
+    for (const legacyType of LEGACY_CHAT3D_STATE_TYPES) {
+      matrix.getStateEvent = jasmine.createSpy('getStateEvent').and.callFake(
+        async (_room: string, type: string) => {
+          if (type === legacyType) {
+            return { enabled: true, style: 'default', maxParticipants: 4, allowMedia: true, stageModOnly: false };
+          }
+          throw new Error('404 M_NOT_FOUND'); // every newer generation is unset
+        });
+
+      const state = await service.getChat3dState('!room:snap');
+
+      expect(state?.enabled).withContext(legacyType).toBeTrue();
+      expect(state?.maxParticipants).withContext(legacyType).toBe(4);
+      expect(matrix.getStateEvent).toHaveBeenCalledWith('!room:snap', legacyType);
+    }
+  });
+
+  it('LEGACY read-fallback: the canonical event WINS over both older generations', async () => {
+    matrix.getStateEvent.and.callFake(async (_room: string, type: string) =>
+      (type === CHAT3D_STATE_TYPE
+        ? { enabled: false } // the newest word: the room was switched OFF post-move
+        : { enabled: true, maxParticipants: 16 }));
+
+    const state = await service.getChat3dState('!room:snap');
+
+    // A stale legacy "enabled" must never override the canonical "disabled".
+    expect(state?.enabled).toBeFalse();
+    expect(matrix.getStateEvent).toHaveBeenCalledTimes(1);
   });
 
   it('writes the setting as the exact spec content shape', async () => {

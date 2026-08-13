@@ -2,20 +2,20 @@
 
 The **Matrix** Angular micro-frontend (native-federation **remote** named
 `matrix`) for the
-[hugmesh.systems](https://github.com/hugmesh-net/hugmesh-host-shell)
+[hugmesh.systems](https://github.com/hugmesh/hugmesh-host-shell)
 host shell, plus a small demo host for local dev/E2E. The remote is federated
 into the host at runtime and served at `/social/matrix` by the
 `hugmesh-fe-gateway` (Spring Cloud Gateway) on the frontend nodes.
 
 Part of the HugMesh RPi 5 / x86_64 cluster built by
-[catalyst-scripts](https://github.com/hugmesh-net/catalyst-scripts).
+[catalyst-scripts](https://github.com/hugmesh/catalyst-scripts).
 Sibling remotes live in their own repos:
-[mastodon](https://github.com/hugmesh-net/hugmesh-mastodon-ui) ·
-[login](https://github.com/hugmesh-net/hugmesh-login-ui) ·
-[admin](https://github.com/hugmesh-net/hugmesh-admin-ui) ·
-[mod](https://github.com/hugmesh-net/hugmesh-mod-ui) ·
-[user](https://github.com/hugmesh-net/hugmesh-user-ui) ·
-[apidocs](https://github.com/hugmesh-net/hugmesh-api-docs).
+[mastodon](https://github.com/hugmesh/hugmesh-mastodon-ui) ·
+[login](https://github.com/hugmesh/hugmesh-login-ui) ·
+[admin](https://github.com/hugmesh/hugmesh-admin-ui) ·
+[mod](https://github.com/hugmesh/hugmesh-mod-ui) ·
+[user](https://github.com/hugmesh/hugmesh-user-ui) ·
+[apidocs](https://github.com/hugmesh/hugmesh-api-docs).
 
 ## What this is
 
@@ -179,7 +179,7 @@ visemes**, by product decision). The newest `m.room.message` is
 typewriter-revealed in the stage's classic VN dialogue box. Signalling, ICE
 handling and the TURN capability note are the video call's, unchanged.
 
-The **shared scene** is the room state event **`systems.hugmesh.vn.scene`**
+The **shared scene** is the room state event **`net.hugmesh.vn.scene`**
 (content `{"sceneId": string|null, "props": [{"propId","x","y","scale"}]}`,
 x/y normalized 0..1) — room state, so every member sees the same stage and
 anyone the power levels allow can redecorate, live, mid-call via the in-call
@@ -219,10 +219,10 @@ contentWindow source check on every inbound message and a pinned targetOrigin
 on every outbound one.
 
 **Room state events** (all fail-soft parsed, clamped, untrusted-input-hardened):
-`systems.hugmesh.chat3d` (enable/style/`maxParticipants` 2..16/`allowMedia`/
-`stageModOnly`), `systems.hugmesh.chat3d.scene` (media placements on
+`net.hugmesh.chat3d` (enable/style/`maxParticipants` 2..16/`allowMedia`/
+`stageModOnly`), `net.hugmesh.chat3d.scene` (media placements on
 `table-1..6`/`screen-1..4`/`stage`, moderated receive path), and
-`systems.hugmesh.chat3d.avatar` (state_key = owner mxid; Char3DConfig
+`net.hugmesh.chat3d.avatar` (state_key = owner mxid; Char3DConfig
 snapshot ≤8KB — character-forge active character, VN sticker billboard, or a
 seeded guest).
 
@@ -298,7 +298,7 @@ MediaPipe wasm in OUR page, `frame-src` is the parameterized games origin, and
 `pastel`, `neon`, `paper`, `midnight-vn`), then fine-tune accent + bubble
 colors, bubble shape (rounded / square / minimal), font, density and a chat
 background pattern, with a live mini-preview. The config persists to Matrix
-**account data** under **`systems.hugmesh.chat_theme`** (per user — follows
+**account data** under **`net.hugmesh.chat_theme`** (per user — follows
 the account across devices, visible to no one else) with a localStorage
 fast-boot copy so chat is themed before the fetch resolves; account data wins
 once it lands, and reset writes `{}` as the cross-device "no theme" marker.
@@ -322,7 +322,7 @@ below):
 
 - **Room settings → Mesh bridge (LoRa)**: a per-room toggle, bridge device id
   and Meshtastic channel slot (0–7), stored as the room STATE event
-  **`systems.hugmesh.mesh.bridge`** (`MeshBridgeStateService`, tolerant/
+  **`net.hugmesh.mesh.bridge`** (`MeshBridgeStateService`, tolerant/
   fail-soft parse — a malformed or unset event renders as "off"). The controls
   are power-level-gated by the same generic `senderMayDriveScene()` guard the
   VN shared scene uses (greyed out with WHY-helptext below the room's
@@ -459,6 +459,15 @@ fe-gateway proxies `/bff/**`).
   proxies to `hugmesh-federation-api`'s `POST
   /api/federation/moderation/{id}/decide` (bearer-forwarded, so federation-api
   authorises + domain-scopes the decision against the original admin's JWT).
+- **character-forge-bff** (`/bff/character-forge/**`,
+  `hugmesh-character-forge-bff-api`, ROLE_USER floor, owner ALWAYS the JWT
+  subject) — `CharacterForgeBffService`: a THIN read-only client for the
+  chat3d avatar join-menu's one need, `GET
+  /bff/character-forge/characters/active` → `{name, definition}` | `404`. The
+  full character CRUD surface belongs to the character-forge remote; this is
+  an **optional** service — a 404, a denied call, or a dark BFF all resolve to
+  `null` and the join-menu option is greyed with WHY-helptext rather than
+  failing.
 
 The ADMIN approve/deny control in `RoleActionsComponent` is **wired, not
 stubbed** — it calls `AdminBffService.decide()` above; an approved
@@ -521,6 +530,7 @@ flowchart TD
     modbff["mod-bff (/bff/mod)<br/>moderation queue · server-wide block"]
     adminbff["admin-bff (/bff/admin)<br/>moderation decide→apply (ADMIN)"]
     fedapi["federation-api<br/>decide→apply · bearer-forwarded, domain-scoped"]
+    forgebff["character-forge-bff (/bff/character-forge)<br/>active character read, OPTIONAL service"]
 
     remote -.serves and proxies.- gw
     remote -->|"CS-API via /bff/user/matrix hsproxy (HttpOnly bff_ cookie only)"| userbff
@@ -529,6 +539,7 @@ flowchart TD
     remote -->|"HttpOnly bff_ cookie (no bearer)"| modbff
     remote -->|"HttpOnly bff_ cookie (no bearer)"| adminbff
     adminbff -->|"bearer-forwarded decide→apply"| fedapi
+    remote -->|"HttpOnly bff_ cookie (no bearer), fail-soft on 404/dark"| forgebff
     userbff -->|"POST /bff/user/media/upload"| poison
     poison -->|"perturbed bytes"| hs
   end
@@ -565,10 +576,18 @@ As of July 2026:
   custom-property tokens, and the package coordinate (`@hugmesh/matrix`) were
   all renamed from their earlier internal prefixes to the current
   `hug`/`hugmesh` naming. The Matrix wire-protocol event-type/account-data
-  strings (`com.hugmesh.mesh`, `systems.hugmesh.*`) are deliberately
-  `hugmesh`-prefixed — they're a live wire contract with the homeserver/
-  BFF/bridge, so renaming them without a coordinated, multi-repo/data
-  migration would silently break interop.
+  strings are a live wire contract with the homeserver/BFF/bridge, handled
+  with a coordinated policy (2026-08-12): the CANONICAL prefix is
+  **`net.hugmesh.*`** (it follows the `.net` domain move, like the Java
+  package rename), every WRITE mints only the canonical name, and every READ
+  walks a three-generation fallback chain — `net.hugmesh.<x>` →
+  `systems.hugmesh.<x>` (post-squash builds) → `systems.snapdragon.<x>`
+  (pre-rebrand) — newest present generation winning, so rooms and accounts
+  written by any earlier build keep working without a data migration. Each
+  service exports its `LEGACY_*` constants beside the canonical one; the
+  `com.hugmesh.mesh` CONTENT field keeps its spelling (read-fallback to
+  `com.snapdragon.mesh`). The meshbridge appservice honors the same chain
+  on its side (hugmesh-generator `bridge.py`).
 - **Shipped on `main`** — the Angular 22 + native-federation `matrix` remote is
   built and deployed as this repo's image: the full Element-like CS-API client
   (`MATRIX_ROUTES`), additive role tiers, the `matrix_domainlocked` SOCIAL
@@ -701,6 +720,17 @@ via a GitLab Schedule or manual trigger — never a plain MR) execute
 harness lookup — non-blocking, but not yet scanning. No executed pipeline run of
 this stage has been observed from this repo yet.
 
+**Running it locally:** the repo-root `Makefile` mirrors this CI stage for
+local use — `make pentest` (= `make pentest-sca pentest-dast`). `pentest-sca`
+runs `npm audit --audit-level=high` plus OWASP Dependency-Check when its CLI
+is on `PATH` (falls back to printing the equivalent `docker run
+owasp/dependency-check` invocation CI uses). `pentest-dast` is a no-op unless
+`DAST_TARGET_URL=<running app url>` is set, in which case it clones the same
+shared harness (`GENERATOR_REPO`, default `hugmesh-generator`) into
+`.pentest-harness` if not already present and runs `run-pentest.sh` against
+that URL. Both targets are non-fatal locally, matching the CI jobs'
+`allow_failure: true`.
+
 ## Known Gaps & Roadmap
 
 State convention: **✅ shipped** = merged to `main` · **🚧 in-flight** = code on
@@ -760,7 +790,7 @@ recorded so readers don't mistake planned platform work for shipped UI.
   [Meshtastic LoRa-mesh bridge](#meshtastic-lora-mesh-bridge-rooms-timeline-my-devices)):
   the room-settings bridge toggle, the timeline provenance badge, and the My
   Mesh Devices claim/visibility/release section all match the documented
-  `systems.hugmesh.mesh.bridge` state-event and `com.hugmesh.mesh`
+  `net.hugmesh.mesh.bridge` state-event and `com.hugmesh.mesh`
   content-fragment contracts and are fully unit-tested (mocks only). The
   bridge appservice that actually watches the state event and relays radio
   traffic, and the mesh-device-registry backend behind `/bff/user/mesh-devices`,
@@ -792,7 +822,7 @@ Issues and pull requests are welcome. A few pointers for working in this repo:
   (`projects/matrix/federation.config.js`) or the shared-deps surface
   (`federation-base.js`), please call that out in the PR description — those
   files also have to stay in sync with the
-  [host shell](https://github.com/hugmesh-net/hugmesh-host-shell) and the
+  [host shell](https://github.com/hugmesh/hugmesh-host-shell) and the
   sibling remotes linked at the top of this README.
 - For anything security-relevant (auth, token custody, the AI-cloak media
   path, CSP/security headers), please open an issue first so it can be

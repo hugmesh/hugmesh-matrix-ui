@@ -25,7 +25,7 @@ function selectorOf(type: Type<unknown>): string {
  * hugmesh → hugmesh, and every component in this remote is namespaced
  * `hug-*` — except the three chat3d components, which shipped as
  * `snap-chat3d-host` / `snap-chat3d-join` / `snap-chat3d-media-panel`. Custom
- * element names are INTERNAL (unlike the `systems.hugmesh.chat3d.*` state
+ * element names are INTERNAL (unlike the `net.hugmesh.chat3d.*` state
  * event types, which are wire identifiers with deployed readers and must NOT
  * be renamed), so the drift was pure inconsistency — and the kind that
  * multiplies, because the next component is written by copying a neighbour.

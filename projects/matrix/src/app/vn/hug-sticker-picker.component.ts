@@ -239,8 +239,11 @@ export class HugStickerPickerComponent implements AfterViewInit, OnDestroy {
         h: tile.h ?? DEFAULT_STICKER_DIM,
       },
       // Org ext so other clients can recover the VN expression; ignored by
-      // clients that don't understand it (the sticker still renders).
-      'systems.hugmesh.vn': { expression: tile.shortcode },
+      // clients that don't understand it (the sticker still renders). Canonical
+      // wire prefix follows the .net domain move; events written by older
+      // builds carry `systems.hugmesh.vn` / `systems.snapdragon.vn` instead —
+      // a future READER of this field must accept all three spellings.
+      'net.hugmesh.vn': { expression: tile.shortcode },
     };
     try {
       const eventId = await this.matrix.sendEvent(this.roomId, 'm.sticker', content);

@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import {
-  MatrixService, MATRIX_BASE_URL, BFF_BASE_URL, MESH_EVENT_CONTENT_FIELD,
+  MatrixService, MATRIX_BASE_URL, BFF_BASE_URL, LEGACY_MESH_EVENT_CONTENT_FIELD, MESH_EVENT_CONTENT_FIELD,
   ReadReceiptMap, mergeReadReceipts, parseMeshEventInfo,
 } from './matrix.service';
 
@@ -566,6 +566,28 @@ describe('MatrixService (hsproxy — no homeserver token in the browser)', () =>
     const state = await service.sync('s1', 0);
     expect(state.rooms['!r:test'].timeline[0].mesh)
       .toEqual({ node: '!a1b2c3d4', device: 'default', channel: 0, registered: false, rssi: -92 });
+  });
+
+  it('LEGACY read-fallback: a pre-rebrand com.snapdragon.mesh fragment still yields the badge, '
+    + 'and the canonical field wins when both exist', async () => {
+    // Bridged events written before the rebrand carry their provenance under
+    // the legacy field name forever (events are immutable) — the badge must
+    // not vanish off the room's history. Read-fallback only: the UI never
+    // writes this field at all.
+    const legacy = { node: '!a1b2c3d4', device: 'default', channel: 1, registered: false };
+    const canonical = { node: '!feedf00d', device: 'default', channel: 2, registered: true };
+    fetchSpy.and.resolveTo(jsonResponse({
+      next_batch: 's2',
+      rooms: { join: { '!r:test': { timeline: { events: [
+        { event_id: '$l1', type: 'm.room.message', sender: '@mesh-a1b2c3d4:test', origin_server_ts: 5,
+          content: { msgtype: 'm.text', body: 'old air', [LEGACY_MESH_EVENT_CONTENT_FIELD]: legacy } },
+        { event_id: '$l2', type: 'm.room.message', sender: '@mesh-feedf00d:test', origin_server_ts: 6,
+          content: { msgtype: 'm.text', body: 'both', [MESH_EVENT_CONTENT_FIELD]: canonical, [LEGACY_MESH_EVENT_CONTENT_FIELD]: legacy } },
+      ], limited: false } } } },
+    }));
+    const state = await service.sync('s1', 0);
+    expect(state.rooms['!r:test'].timeline[0].mesh).toEqual(legacy);
+    expect(state.rooms['!r:test'].timeline[1].mesh).toEqual(canonical);
   });
 
   it('leaves mesh undefined for an ordinary event and for a MALFORMED fragment', async () => {

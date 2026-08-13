@@ -3,6 +3,7 @@ import { MatrixService } from '../matrix.service';
 import {
   CHAT_THEME_ACCOUNT_DATA_TYPE,
   CHAT_THEME_PRESETS,
+  LEGACY_CHAT_THEME_ACCOUNT_DATA_TYPES,
   CHAT_THEME_STORAGE_KEY,
   ChatThemeConfig,
   ChatThemeService,
@@ -146,7 +147,7 @@ describe('ChatThemeService', () => {
 
   // ───────── Persistence ─────────
 
-  it('setTheme persists to localStorage AND the systems.hugmesh.chat_theme account data', async () => {
+  it('setTheme persists to localStorage AND the net.hugmesh.chat_theme account data', async () => {
     service.registerRoot(root);
     const cfg = pastel();
     await service.setTheme(cfg);
@@ -172,6 +173,53 @@ describe('ChatThemeService', () => {
     expect(matrix.getAccountData).toHaveBeenCalledWith('@me:test', CHAT_THEME_ACCOUNT_DATA_TYPE);
     // localStorage refreshed to the authoritative copy.
     expect(JSON.parse(localStorage.getItem(CHAT_THEME_STORAGE_KEY)!).preset).toBe('neon');
+  });
+
+  it('LEGACY read-fallback: a theme saved under EITHER pre-rebrand name still loads', async () => {
+    // Pre-.net-move accounts persist systems.hugmesh.chat_theme; pre-rebrand
+    // accounts persist systems.snapdragon.chat_theme. Both are real data the
+    // load chain must reach — writes only ever go to the canonical type.
+    for (const legacyType of LEGACY_CHAT_THEME_ACCOUNT_DATA_TYPES) {
+      // A fresh injector per generation: loadRemote only ever boots once.
+      TestBed.resetTestingModule();
+      const m = new MatrixServiceStub();
+      m.getAccountData.and.callFake(
+        async (_me: string, type: string) => (type === legacyType ? defaultChatTheme('neon') : null));
+      TestBed.configureTestingModule({ providers: [{ provide: MatrixService, useValue: m }] });
+      const svc = TestBed.inject(ChatThemeService);
+      const el = document.createElement('div');
+      document.body.appendChild(el);
+      try {
+        svc.registerRoot(el);
+        await settle();
+        expect(el.getAttribute('data-matrix-theme')).withContext(legacyType).toBe('neon');
+        expect(m.getAccountData).toHaveBeenCalledWith('@me:test', legacyType);
+      } finally {
+        el.remove();
+      }
+    }
+  });
+
+  it('LEGACY read-fallback: the canonical copy WINS over both older generations', async () => {
+    // The canonical {} reset marker must also win: an account reset post-move
+    // must not resurrect the systems.* theme it retired.
+    matrix.getAccountData.and.callFake(async (_me: string, type: string) =>
+      (type === CHAT_THEME_ACCOUNT_DATA_TYPE ? defaultChatTheme('paper') : defaultChatTheme('neon')));
+    service.registerRoot(root);
+    await settle();
+    expect(root.getAttribute('data-matrix-theme')).toBe('paper');
+    expect(matrix.getAccountData).toHaveBeenCalledTimes(1);
+  });
+
+  it('LEGACY read-fallback: a canonical {} reset SUPPRESSES an older generation theme', async () => {
+    localStorage.setItem(CHAT_THEME_STORAGE_KEY, JSON.stringify(pastel()));
+    matrix.getAccountData.and.callFake(async (_me: string, type: string) =>
+      (type === CHAT_THEME_ACCOUNT_DATA_TYPE ? {} : defaultChatTheme('neon')));
+    service.registerRoot(root);
+    await settle();
+    // The account's newest word is "no theme" — never the legacy neon.
+    expect(root.hasAttribute('data-matrix-theme')).toBeFalse();
+    expect(service.theme()).toBeNull();
   });
 
   it('an EMPTY account-data object (reset on another device) clears the boot copy', async () => {

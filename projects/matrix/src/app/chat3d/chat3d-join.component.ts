@@ -121,7 +121,7 @@ export class Chat3dJoinComponent implements OnInit, OnDestroy {
 
   /**
    * The avatar snapshot the chosen source yields — what the room host
-   * publishes as my `systems.hugmesh.chat3d.avatar` state. A source that
+   * publishes as my `net.hugmesh.chat3d.avatar` state. A source that
    * lost its backing mid-menu (e.g. forge chosen but the character vanished)
    * degrades to the seeded guest rather than failing the join.
    */

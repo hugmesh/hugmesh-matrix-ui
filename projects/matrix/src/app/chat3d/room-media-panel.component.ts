@@ -41,7 +41,7 @@ export interface MediaPanelItem {
  * room's recent media messages (back-paginated, capped), its thread roots and
  * its pinned events, and lets a member PLACE any of them onto a scene surface
  * (table-1..6 / screen-1..4 / stage) by writing the shared
- * `systems.hugmesh.chat3d.scene` state — the host's poll then pushes the
+ * `net.hugmesh.chat3d.scene` state — the host's poll then pushes the
  * placement (with texture bytes for images, a poster frame for video) into
  * the game. Placement here is the WRITE side; every guard on the RECEIVE side
  * (Chat3dSceneService's moderated read) still applies to whatever we write.

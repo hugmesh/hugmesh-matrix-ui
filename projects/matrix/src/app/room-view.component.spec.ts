@@ -19,7 +19,7 @@ class MatrixServiceStub {
   sendReceipt = jasmine.createSpy('sendReceipt').and.resolveTo(undefined);
   setReadMarker = jasmine.createSpy('setReadMarker').and.resolveTo(undefined);
   mxcToHttp = jasmine.createSpy('mxcToHttp').and.returnValue('');
-  // Chat3dStateService reads the systems.hugmesh.chat3d room state through
+  // Chat3dStateService reads the net.hugmesh.chat3d room state through
   // this; null = unset ⇒ the 3D-room button stays hidden by default.
   getStateEvent = jasmine.createSpy('getStateEvent').and.resolveTo(null);
 }

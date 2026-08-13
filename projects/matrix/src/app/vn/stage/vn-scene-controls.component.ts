@@ -6,7 +6,7 @@ import { VnSceneState, VnSceneStateService } from '../scenes/vn-scene-state.serv
 /**
  * `hug-vn-scene-controls` — the HOST that wires the pure
  * {@link ScenePickerComponent} to the SHARED per-room scene state
- * ({@link VnSceneStateService} / the `systems.hugmesh.vn.scene` room state
+ * ({@link VnSceneStateService} / the `net.hugmesh.vn.scene` room state
  * event): it loads the room's current scene into the picker, persists every
  * picker edit OPTIMISTICALLY (local state first, then the PUT), and re-emits
  * the new state ({@link stateChange}) so a sibling `hug-vn-stage` can render

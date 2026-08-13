@@ -1,9 +1,10 @@
 import { TestBed } from '@angular/core/testing';
 import { MatrixService, TimelineEvent } from '../matrix.service';
-import { CHAT3D_STATE_TYPE } from './chat3d-state.service';
+import { CHAT3D_STATE_TYPE, LEGACY_CHAT3D_STATE_TYPES } from './chat3d-state.service';
 import {
   CHAT3D_SCENE_TYPE,
   Chat3dSceneService,
+  LEGACY_CHAT3D_SCENE_TYPES,
   MAX_PLACEMENTS,
   parseChat3dSceneState,
 } from './chat3d-scene.service';
@@ -254,6 +255,57 @@ describe('Chat3dSceneService', () => {
         stateEvent(CHAT3D_SCENE_TYPE, { placements: [row({ label: 'new' })] }, '@member:test'),
       ]);
       expect((await service.getModeratedSceneState('!r:test'))!.placements[0].label).toBe('new');
+    });
+
+    it('LEGACY read-fallback: a pre-rebrand room (legacy config + scene names) still renders', async () => {
+      // Generation-paired on purpose: an untouched pre-rebrand room carries
+      // BOTH its config and its scene under the same old generation, and the
+      // per-event PL override the old enable flow wrote names the legacy scene
+      // type — the guard must look it up under the ARRIVED-under name.
+      for (let gen = 0; gen < LEGACY_CHAT3D_SCENE_TYPES.length; gen++) {
+        const configType = LEGACY_CHAT3D_STATE_TYPES[gen];
+        const sceneType = LEGACY_CHAT3D_SCENE_TYPES[gen];
+        // DISTINGUISHING PL setup (floor 0): the legacy override (25) sits
+        // BELOW state_default (50) and the sender (30) between them — so the
+        // stage placement survives ONLY when the guard reads the override
+        // under the legacy name. A canonical-keyed lookup would miss it, fall
+        // back to state_default and wrongly drop the stage.
+        const events = [
+          stateEvent(configType, configContent()),
+          stateEvent('m.room.power_levels',
+            { users: { '@driver:test': 30 }, users_default: 0, state_default: 50, events: { [sceneType]: 25 } }),
+          stateEvent(sceneType,
+            { placements: [row({ label: `gen-${gen}` }), row({ surfaceId: 'stage', label: `stage-${gen}` })] },
+            '@driver:test'),
+        ];
+        const state = await service.getModeratedSceneState('!r:test', 0, events);
+        expect(state!.placements).withContext(sceneType).toEqual([
+          { surfaceId: 'table-1', eventId: '$evt1', kind: 'image', label: `gen-${gen}` },
+          { surfaceId: 'stage', eventId: '$evt1', kind: 'image', label: `stage-${gen}` },
+        ]);
+      }
+    });
+
+    it('LEGACY read-fallback: the canonical scene event wins over a stale legacy one', async () => {
+      const events = [
+        stateEvent(CHAT3D_STATE_TYPE, configContent()),
+        stateEvent('m.room.power_levels', plContent()),
+        stateEvent(LEGACY_CHAT3D_SCENE_TYPES[0], { placements: [row({ label: 'stale' })] }, '@member:test'),
+        stateEvent(CHAT3D_SCENE_TYPE, { placements: [row({ label: 'current' })] }, '@member:test'),
+      ];
+      const state = await service.getModeratedSceneState('!r:test', undefined, events);
+      expect(state!.placements[0].label).toBe('current');
+    });
+
+    it('LEGACY read-fallback: the raw getSceneState read walks the generation chain too', async () => {
+      matrix.getStateEvent.and.callFake(async (_room: string, type: string) => {
+        if (type === LEGACY_CHAT3D_SCENE_TYPES[1]) {
+          return { placements: [row({ label: 'snap-era' })] };
+        }
+        throw new Error('404 M_NOT_FOUND');
+      });
+      const state = await service.getSceneState('!r:test');
+      expect(state!.placements[0].label).toBe('snap-era');
     });
 
     it('FAIL-SOFT: a thrown roomState keeps the last applied scene', async () => {

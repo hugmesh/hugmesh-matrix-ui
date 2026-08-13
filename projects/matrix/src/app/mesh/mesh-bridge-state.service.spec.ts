@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { MatrixService } from '../matrix.service';
 import {
   DEFAULT_MESH_DEVICE,
+  LEGACY_MESH_BRIDGE_STATE_TYPES,
   MESH_BRIDGE_STATE_TYPE,
   MeshBridgeState,
   MeshBridgeStateService,
@@ -74,7 +75,7 @@ describe('MeshBridgeStateService', () => {
     service = TestBed.inject(MeshBridgeStateService);
   });
 
-  it('reads the bridge setting from the systems.hugmesh.mesh.bridge state event', async () => {
+  it('reads the bridge setting from the net.hugmesh.mesh.bridge state event', async () => {
     matrix.getStateEvent.and.resolveTo({ enabled: true, device: 'lora-1', meshChannel: 2 });
 
     const state = await service.getMeshBridgeState('!room:snap');
@@ -90,8 +91,40 @@ describe('MeshBridgeStateService', () => {
     expect(await service.getMeshBridgeState('!room:snap')).toBeNull();
 
     expect(await service.getMeshBridgeState('')).toBeNull();
-    // No room id must not even hit the wire.
-    expect(matrix.getStateEvent).toHaveBeenCalledTimes(2);
+    // No room id must not even hit the wire — each wired read walks the
+    // 3-generation name chain (canonical + 2 legacy), so two reads = 6 GETs.
+    expect(matrix.getStateEvent).toHaveBeenCalledTimes(6);
+  });
+
+  it('LEGACY read-fallback: a bridge setting saved under EITHER pre-rebrand name still parses', async () => {
+    // Pre-.net-move rooms persist systems.hugmesh.*; pre-rebrand rooms persist
+    // systems.snapdragon.*. Both are real data — and writes never touch them.
+    for (const legacyType of LEGACY_MESH_BRIDGE_STATE_TYPES) {
+      matrix.getStateEvent = jasmine.createSpy('getStateEvent').and.callFake(
+        async (_room: string, type: string) => {
+          if (type === legacyType) {
+            return { enabled: true, device: 'lora-1', meshChannel: 2 };
+          }
+          throw new Error('404 M_NOT_FOUND'); // every newer generation is unset
+        });
+
+      const state = await service.getMeshBridgeState('!room:snap');
+
+      expect(state).withContext(legacyType).toEqual({ enabled: true, device: 'lora-1', meshChannel: 2 });
+      expect(matrix.getStateEvent).toHaveBeenCalledWith('!room:snap', legacyType);
+    }
+  });
+
+  it('LEGACY read-fallback: the canonical event WINS over both older generations', async () => {
+    matrix.getStateEvent.and.callFake(async (_room: string, type: string) =>
+      (type === MESH_BRIDGE_STATE_TYPE
+        ? { enabled: false } // the newest word: the bridge was switched OFF post-move
+        : { enabled: true, device: 'lora-1', meshChannel: 2 }));
+
+    const state = await service.getMeshBridgeState('!room:snap');
+
+    expect(state?.enabled).toBeFalse();
+    expect(matrix.getStateEvent).toHaveBeenCalledTimes(1);
   });
 
   it('writes the bridge setting as the exact spec content shape', async () => {

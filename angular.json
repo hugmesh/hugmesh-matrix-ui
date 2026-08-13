@@ -137,7 +137,7 @@
 						"tsConfig": "projects/matrix/tsconfig.app.json",
 						"assets": [
 							{ "glob": "**/*", "input": "projects/matrix/src/assets", "output": "assets" },
-							{ "glob": "**/*", "input": "node_modules/@mediapipe/tasks-vision/wasm", "output": "assets/mediapipe/wasm" }
+							{ "glob": "**/*", "input": "node_modules/@mediapipe/tasks-vision/wasm", "output": "assets/mediapipe/wasm" },
 							{ "glob": "favicon.ico", "input": "projects/matrix/src", "output": "" }
 						],
 						"styles": ["projects/matrix/src/styles.scss"]
@@ -171,7 +171,7 @@
 						"karmaConfig": "karma.conf.js",
 						"assets": [
 							{ "glob": "**/*", "input": "projects/matrix/src/assets", "output": "assets" },
-							{ "glob": "**/*", "input": "node_modules/@mediapipe/tasks-vision/wasm", "output": "assets/mediapipe/wasm" }
+							{ "glob": "**/*", "input": "node_modules/@mediapipe/tasks-vision/wasm", "output": "assets/mediapipe/wasm" },
 							{ "glob": "favicon.ico", "input": "projects/matrix/src", "output": "" }
 						],
 						"styles": ["projects/matrix/src/styles.scss"],
