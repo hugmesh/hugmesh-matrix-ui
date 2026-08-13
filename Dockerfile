@@ -9,7 +9,11 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
-RUN npm run build:matrix
+# --base-href is LOAD-BEARING: the remote is served under /social/matrix/, and
+# without it the built assets resolve at / and fall through to the SPA
+# catch-all (200 text/html instead of JS) — the app renders blank. Every UI in
+# the stack carries its own mount-path flag (cf. login-ui's /login/).
+RUN npm run build:matrix -- --base-href=/social/matrix/
 
 FROM nginx:1.27-alpine
 COPY nginx.conf /etc/nginx/conf.d/default.conf

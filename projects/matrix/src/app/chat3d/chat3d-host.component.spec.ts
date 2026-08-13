@@ -8,7 +8,7 @@ import {
 import { CHAT3D_STATE_TYPE, LEGACY_CHAT3D_STATE_TYPES } from './chat3d-state.service';
 import { CHAT3D_SCENE_TYPE } from './chat3d-scene.service';
 import { CHAT3D_AVATAR_TYPE, Chat3dAvatarState } from './chat3d-avatar.service';
-import { CHAT3D_STAGE_TYPE } from './chat3d-stage.service';
+import { CHAT3D_STAGE_TYPE, LEGACY_CHAT3D_STAGE_TYPES } from './chat3d-stage.service';
 import { GAMES_BASE_URL, HostEnvelope, MAX_MEDIA_BYTES, decodeAsGame } from './chat3d-bridge';
 import { randomChar3dConfig } from './char3d-config';
 import { MeshCallService } from './mesh-call.service';
@@ -401,6 +401,32 @@ describe('Chat3dHostComponent (iframe embed + §5 postMessage bridge, host side)
     deliver({ v: 1, t: 'ready' });
     expect(posted.filter((e) => e['t'] === 'expression').length).toBe(0);
     expect(posted.filter((e) => e['t'] === 'roster').length).toBe(1); // the rest still ran
+  });
+
+  it('STAGE PRODUCER, LEGACY LEG end-to-end: a pre-rebrand room (legacy config + legacy grant) resolves the holder into the UI signals', async () => {
+    // Live-verification gap closure: a headless browser cannot observe the
+    // in-canvas holder nametag, and the roster/sender gates give a suppressed
+    // holder several benign explanations — so the FULL component-level signal
+    // path (legacy-named events → stageHolder()/onStage(), the aria-pressed
+    // and "X is on the stage" sources) is pinned here, where every gate can
+    // be satisfied deliberately. Both legacy generations, entirely
+    // legacy-named state: config AND grant AND nothing canonical present.
+    for (let gen = 0; gen < LEGACY_CHAT3D_STAGE_TYPES.length; gen++) {
+      posted.length = 0;
+      await create([
+        { ...enabledConfig(), type: LEGACY_CHAT3D_STATE_TYPES[gen] },
+        powerLevels(),
+        avatarEvent('@alice:test', 'alice'), // me — the grant holder, in-roster
+        stateEvent(LEGACY_CHAT3D_STAGE_TYPES[gen], { v: 1, userId: '@alice:test' }, '@mod:test'),
+      ]);
+      deliver({ v: 1, t: 'ready' });
+      expect(component.stageHolder()).withContext(LEGACY_CHAT3D_STAGE_TYPES[gen]).toBe('@alice:test');
+      // I hold the grant ⇒ onStage() true — the button reads "Leave the
+      // stage" with aria-pressed=true, headless or not.
+      expect(component.onStage()).withContext(LEGACY_CHAT3D_STAGE_TYPES[gen]).toBeTrue();
+      expect(posted.filter((e) => e['t'] === 'stage').map((e) => decodeAsGame(e)!))
+        .withContext(LEGACY_CHAT3D_STAGE_TYPES[gen]).toEqual([['@alice:test', true]]);
+    }
   });
 
   it('STAGE PRODUCER: a moderator grant lights the platform; a hand-over revokes first', async () => {
