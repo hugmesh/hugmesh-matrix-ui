@@ -1,7 +1,7 @@
 import { Component, Input, OnChanges, OnDestroy, OnInit, Signal, SimpleChanges, computed, effect, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { MatrixService, ReadReceiptMap, RoomMember, RoomSummary, TimelineEvent } from './matrix.service';
+import { MatrixService, ReadReceiptMap, RoomMember, RoomSummary, SyncRoomFeed, TimelineEvent, mergeSyncRoom } from './matrix.service';
 import { TimelineComponent } from './timeline.component';
 import { ComposerComponent } from './composer.component';
 import { HugCharacterPanelComponent } from './vn/hug-character-panel.component';
@@ -9,6 +9,7 @@ import { DEFAULT_EXPRESSION, Expression, expressionForEvent } from './vn/express
 import { ChatThemeRootDirective } from './theme/chat-theme-root.directive';
 import { Chat3dStateService } from './chat3d/chat3d-state.service';
 import { mountRoute } from './mount-route';
+import { VIEW_RELOAD_EVENT } from './shell-events';
 
 type ComposerMode = 'send' | 'reply' | 'edit' | 'thread';
 
@@ -32,17 +33,56 @@ export class RoomViewComponent implements OnInit, OnChanges, OnDestroy {
   /** This remote's mount point — in-app links resolve against it
    *  (see mount-route.ts: absolute links bounce out of the remote). */
   readonly mount = mountRoute();
+  /** Long-poll window for the standalone route's own sync (matches the chat
+   *  shell's, so both hold the connection for the same duration). */
+  private static readonly SYNC_TIMEOUT_MS = 30000;
+  /** Pause before retrying after a rejected/failed sync — without it a hard
+   *  failure turns the long-poll into a hot loop. */
+  private static readonly SYNC_BACKOFF_MS = 2000;
+
   private readonly matrix = inject(MatrixService);
   private readonly route = inject(ActivatedRoute);
   private readonly chat3d = inject(Chat3dStateService);
 
   /** When embedded by the chat shell, the host passes the room id directly. */
   @Input() roomIdInput: string | null = null;
+
+  /**
+   * The host-supplied live feed, held in a signal OF the feed signal.
+   *
+   * TWO bugs live here, both of which showed up as "my message sends but never
+   * appears":
+   *
+   *  1. REACTIVE CAPTURE. `liveEvents` is a computed that reads
+   *     `this.syncRoom()`. If it is ever evaluated while `syncRoom` is still the
+   *     default placeholder signal — a signal that by construction never changes
+   *     — the computed caches `null` against a dead producer and NEVER
+   *     recomputes, no matter how many deltas the host pushes afterwards.
+   *     Wrapping the input in its own signal makes the ASSIGNMENT itself a
+   *     tracked change, so the computeds re-run when the real feed arrives
+   *     regardless of evaluation order.
+   *  2. NO FEED AT ALL on the deep-link route. `rooms/:roomId` renders this
+   *     component directly (room-list links straight to it), and nothing binds
+   *     `syncRoom` there — so the timeline was frozen at its initial history
+   *     page for the whole visit. See {@link ownSyncLoop}.
+   */
+  private readonly hostFeed = signal<Signal<{ timeline: TimelineEvent[]; typing: string[]; receipts?: ReadReceiptMap } | null> | null>(null);
+
   /** Live sync feed (timeline events + typing + folded read receipts) for this
    *  room, optional. May be a writable or computed signal depending on the
    *  host. `receipts` is the latest-read-per-user map the timeline's "seen by"
    *  indicator anchors each reader's avatar from. */
-  @Input() syncRoom: Signal<{ timeline: TimelineEvent[]; typing: string[]; receipts?: ReadReceiptMap } | null> = signal(null);
+  @Input()
+  set syncRoom(feed: Signal<{ timeline: TimelineEvent[]; typing: string[]; receipts?: ReadReceiptMap } | null>) {
+    this.hostFeed.set(feed);
+  }
+  get syncRoom(): Signal<{ timeline: TimelineEvent[]; typing: string[]; receipts?: ReadReceiptMap } | null> {
+    return this.hostFeed() ?? this.ownFeed;
+  }
+
+  /** This component's OWN feed, driven by {@link ownSyncLoop} and used only when
+   *  no host bound `syncRoom` (the `rooms/:roomId` deep-link route). */
+  private readonly ownFeed = signal<SyncRoomFeed | null>(null);
 
   readonly roomId = signal<string | null>(null);
   readonly summary = signal<RoomSummary | null>(null);
@@ -57,15 +97,22 @@ export class RoomViewComponent implements OnInit, OnChanges, OnDestroy {
    *  simply hides the door; the join route re-checks for deep links). */
   readonly chat3dEnabled = signal(false);
 
+  /** The ACTIVE feed value: the host's when one is bound, else this component's
+   *  own loop. Reading `hostFeed()` inside the computed is what makes the input
+   *  assignment a tracked dependency (see {@link hostFeed}); every derived
+   *  signal below goes through here so none of them can capture a dead
+   *  producer. */
+  private readonly feed = computed(() => (this.hostFeed() ?? this.ownFeed)());
+
   /** The latest-read-per-user map the timeline renders the "seen by" indicator
-   *  from (empty when the host feeds no receipts / on the deep-link route). */
-  readonly readReceipts = computed<ReadReceiptMap>(() => this.syncRoom()?.receipts ?? {});
+   *  from (empty until a delta carries receipts). */
+  readonly readReceipts = computed<ReadReceiptMap>(() => this.feed()?.receipts ?? {});
 
   readonly composerMode = signal<ComposerMode>('send');
   readonly composerTarget = signal<TimelineEvent | null>(null);
 
-  readonly liveEvents = computed(() => this.syncRoom()?.timeline ?? null);
-  readonly typingUsers = computed(() => (this.syncRoom()?.typing ?? []).filter((u) => u !== this.me()));
+  readonly liveEvents = computed(() => this.feed()?.timeline ?? null);
+  readonly typingUsers = computed(() => (this.feed()?.typing ?? []).filter((u) => u !== this.me()));
 
   // ── VN live character (B2, Path A) ───────────────────────────────────────
   // The latest message-bearing timeline event drives an OPTIONAL character
@@ -91,6 +138,9 @@ export class RoomViewComponent implements OnInit, OnChanges, OnDestroy {
   readonly characterExpression = signal<Expression>(DEFAULT_EXPRESSION);
 
   private sub?: { unsubscribe(): void };
+  /** Whether {@link ownSyncLoop} should keep polling (false under the chat shell
+   *  and after destroy). */
+  private ownLoopRunning = false;
   /** The event id we last advertised a read receipt for, so the send-on-view
    *  effect fires ONCE per newly-arrived latest event (not on every re-render). */
   private lastReadEventId: string | null = null;
@@ -192,6 +242,23 @@ export class RoomViewComponent implements OnInit, OnChanges, OnDestroy {
       const id = this.roomIdInput ?? fromRoute ?? fromQuery;
       if (id) void this.load(id);
     });
+
+    // STANDALONE ROUTE: nothing bound `syncRoom`, so nobody is feeding this
+    // view — run our own long-poll. Inputs are assigned BEFORE ngOnInit, so
+    // `hostFeed()` being null here reliably means "no host". Under the chat
+    // shell this is skipped and we keep consuming the shell's single loop, so
+    // the two never both sync.
+    if (this.hostFeed() === null) {
+      this.ownLoopRunning = true;
+      void this.ownSyncLoop();
+    }
+
+    // Shell RELOAD button: refresh in place rather than being torn down (the
+    // shell also re-navigates, but a soft refresh keeps the composer draft and
+    // scroll position when the re-navigation resolves to the same component).
+    if (typeof window !== 'undefined') {
+      window.addEventListener(VIEW_RELOAD_EVENT, this.onShellReload);
+    }
   }
 
   ngOnChanges(changes: SimpleChanges): void {
@@ -200,6 +267,53 @@ export class RoomViewComponent implements OnInit, OnChanges, OnDestroy {
 
   ngOnDestroy(): void {
     this.sub?.unsubscribe();
+    this.ownLoopRunning = false;
+    if (typeof window !== 'undefined') {
+      window.removeEventListener(VIEW_RELOAD_EVENT, this.onShellReload);
+    }
+  }
+
+  /** Re-read the room's summary/roster on the shell's reload signal. Bound as a
+   *  property so add/removeEventListener see the SAME function reference — a
+   *  method reference would be a new bound function each call and never
+   *  unregister. */
+  private readonly onShellReload = (): void => {
+    const id = this.roomId();
+    if (id) void this.load(id);
+  };
+
+  /**
+   * The deep-link route's OWN live feed. A room opened at `rooms/:roomId` is not
+   * inside the 3-pane shell, so no sync loop is feeding it: without this the
+   * timeline showed the initial history page and nothing else for the whole
+   * visit — the exact "sent messages don't appear" symptom, on the exact route
+   * the room list links to.
+   *
+   * Deliberately a FULL sync (no room filter) rather than a per-room one: the
+   * CS-API's `since` token is a whole-account cursor, so a filtered loop would
+   * still advance it past OTHER rooms' events, and a later unfiltered consumer
+   * in the same tab would silently skip them. We simply ignore the rooms we are
+   * not showing.
+   */
+  private async ownSyncLoop(): Promise<void> {
+    let since: string | undefined;
+    while (this.ownLoopRunning) {
+      try {
+        const state = await this.matrix.sync(since, RoomViewComponent.SYNC_TIMEOUT_MS);
+        // A rejected sync returns INSTANTLY with the empty placeholder, so
+        // treating it as an ordinary empty delta would spin the loop.
+        if (state.failed) {
+          await new Promise((res) => setTimeout(res, RoomViewComponent.SYNC_BACKOFF_MS));
+          continue;
+        }
+        since = state.nextBatch;
+        const id = this.roomId();
+        const delta = id ? state.rooms[id] : undefined;
+        if (delta) this.ownFeed.update((prev) => mergeSyncRoom(prev, delta));
+      } catch {
+        await new Promise((res) => setTimeout(res, RoomViewComponent.SYNC_BACKOFF_MS));
+      }
+    }
   }
 
   private async load(id: string): Promise<void> {

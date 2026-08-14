@@ -1,4 +1,10 @@
 <section class="hug-matrix" data-testid="matrix-view" aria-label="Matrix chat">
+  <!-- CLIENT-CONNECT: first thing in the tab, for users granted the right to
+       connect their own Matrix client. Renders nothing for everyone else, and
+       renders a REASON rather than a URL unless the homeserver has been proven
+       to answer a real client handshake. -->
+  <hug-client-connect-banner></hug-client-connect-banner>
+
   <div class="topbar">
     <h2>Matrix</h2>
     <p data-testid="matrix-whoami" *ngIf="userId() as id">Signed in as {{ id }}</p>

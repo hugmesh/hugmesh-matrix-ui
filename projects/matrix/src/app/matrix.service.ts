@@ -294,6 +294,14 @@ export interface PendingInvite {
 }
 
 export interface SyncState {
+  /** TRUE when the homeserver REJECTED this sync (non-2xx through the hsproxy)
+   *  and the rest of this object is the empty placeholder rather than a real
+   *  delta. Callers driving a long-poll loop MUST back off on it: a rejected
+   *  sync returns instantly, so a loop that treats it like an ordinary empty
+   *  delta re-requests with no delay and spins — one expired session then
+   *  hammers the BFF continuously for as long as the tab stays open. Absent
+   *  (undefined) on every successful sync. */
+  failed?: boolean;
   nextBatch: string;
   rooms: Record<string, {
     timeline: TimelineEvent[];
@@ -347,6 +355,55 @@ export function mergeReadReceipts(
     }
   }
   return out;
+}
+
+/**
+ * One room's accumulated LIVE feed: the running timeline, the current typing
+ * set, and the folded latest-read-per-user map. This is the shape
+ * {@code <hug-room-view>}'s `syncRoom` input carries.
+ */
+export interface SyncRoomFeed {
+  timeline: TimelineEvent[];
+  typing: string[];
+  receipts: ReadReceiptMap;
+}
+
+/** How many timeline events one room's live feed retains. The feed is a LIVE
+ *  tail, not the archive — back-pagination re-fetches older history on demand —
+ *  so an unbounded accumulation would only grow the memory a long-lived tab
+ *  holds while re-rendering the same rows. */
+export const SYNC_FEED_MAX_EVENTS = 200;
+
+/**
+ * Fold ONE /sync delta for a room into that room's running live feed.
+ *
+ * Extracted as a pure function because there are now TWO live-feed owners and
+ * they MUST fold identically: the 3-pane chat shell (which syncs every joined
+ * room at once) and a room view opened on its own deep-link route
+ * (`rooms/:roomId`), which the shell does not feed. Duplicating this merge was
+ * how the deep-linked view ended up with no live timeline at all.
+ *
+ * Rules the two owners share:
+ *  - timeline events APPEND, de-duped by eventId (a delta may legitimately
+ *    re-deliver an event we already hold, e.g. after a `limited` gap);
+ *  - typing REPLACES — `m.typing` is a full-set ephemeral event, so folding it
+ *    would leave users "typing" forever;
+ *  - receipts FOLD via {@link mergeReadReceipts} — a reader's position moves
+ *    FORWARD across deltas and must accumulate, never be replaced per-delta.
+ */
+export function mergeSyncRoom(
+  prev: SyncRoomFeed | null | undefined,
+  delta: { timeline: TimelineEvent[]; ephemeral: { typing: string[]; receipts: Record<string, Record<string, { user: string; ts: number }[]>> } },
+): SyncRoomFeed {
+  const previousTimeline = prev?.timeline ?? [];
+  const seen = new Set(previousTimeline.map((e) => e.eventId));
+  const merged = [...previousTimeline];
+  for (const e of delta.timeline) if (!seen.has(e.eventId)) merged.push(e);
+  return {
+    timeline: merged.slice(-SYNC_FEED_MAX_EVENTS),
+    typing: delta.ephemeral.typing,
+    receipts: mergeReadReceipts(prev?.receipts ?? {}, delta.ephemeral.receipts),
+  };
 }
 
 export interface UploadResult {
@@ -515,7 +572,7 @@ export class MatrixService {
     qs.set('timeout', String(timeoutMs));
     if (filter) qs.set('filter', filter);
     const r = await this.hsFetch(`${this.baseUrl}/_matrix/client/v3/sync?${qs.toString()}`, { headers: this.headers() });
-    const empty: SyncState = { nextBatch: since ?? '', rooms: {}, invites: {}, accountData: {}, presence: {} };
+    const empty: SyncState = { failed: true, nextBatch: since ?? '', rooms: {}, invites: {}, accountData: {}, presence: {} };
     if (!r.ok) return empty;
     const data = await r.json();
     const out: SyncState = {

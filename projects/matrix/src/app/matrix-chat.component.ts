@@ -1,11 +1,13 @@
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { MatrixService, MatrixRoom, ReadReceiptMap, TimelineEvent, mergeReadReceipts } from './matrix.service';
+import { MatrixService, MatrixRoom, SyncRoomFeed, mergeSyncRoom } from './matrix.service';
 import { RoomListComponent } from './room-list.component';
 import { RoomViewComponent } from './room-view.component';
 import { ChatThemeRootDirective } from './theme/chat-theme-root.directive';
 import { mountRoute } from './mount-route';
+import { ClientConnectBannerComponent } from './client-connect/client-connect-banner.component';
+import { VIEW_RELOAD_EVENT } from './shell-events';
 
 /**
  * Standalone Matrix chat shell. Federated into the hugmesh.net host and
@@ -22,7 +24,7 @@ import { mountRoute } from './mount-route';
 @Component({
   selector: 'hug-matrix-chat',
   standalone: true,
-  imports: [CommonModule, RouterLink, RoomListComponent, RoomViewComponent],
+  imports: [CommonModule, RouterLink, RoomListComponent, RoomViewComponent, ClientConnectBannerComponent],
   // The shell host doubles as a chat-theme root: ChatThemeService stamps the
   // user's data-matrix-*/--hugm-chat-* theming here (never on <body>), scoped
   // by the :host rules this component's stylesheet includes.
@@ -34,6 +36,10 @@ export class MatrixChatComponent implements OnInit, OnDestroy {
   /** This remote's mount point — in-app links resolve against it
    *  (see mount-route.ts: absolute links bounce out of the remote). */
   readonly mount = mountRoute();
+  /** Pause before retrying after a rejected/failed sync, so one bad response
+   *  cannot turn the long-poll into a hot loop. */
+  private static readonly SYNC_BACKOFF_MS = 2000;
+
   private readonly matrix = inject(MatrixService);
   private readonly route = inject(ActivatedRoute);
 
@@ -45,7 +51,7 @@ export class MatrixChatComponent implements OnInit, OnDestroy {
    *  `receipts` is the running latest-read-per-user map (mergeReadReceipts),
    *  NOT the raw per-delta receipts — a reader's position moves forward across
    *  incremental syncs, so it must be accumulated, never replaced per delta. */
-  private readonly syncRooms = signal<Record<string, { timeline: TimelineEvent[]; typing: string[]; receipts: ReadReceiptMap }>>({});
+  private readonly syncRooms = signal<Record<string, SyncRoomFeed>>({});
   readonly currentSync = computed(() => {
     const id = this.current()?.roomId;
     return id ? (this.syncRooms()[id] ?? null) : null;
@@ -92,12 +98,32 @@ export class MatrixChatComponent implements OnInit, OnDestroy {
 
     this.running = true;
     void this.syncLoop();
+
+    // Shell RELOAD button: re-read the room list in place. The shell also
+    // re-navigates the outlet (which re-creates this component), but the
+    // in-place refresh lands FIRST and costs nothing, and it is the only path
+    // that works when this remote runs standalone (`ng serve matrix`).
+    if (typeof window !== 'undefined') {
+      window.addEventListener(VIEW_RELOAD_EVENT, this.onShellReload);
+    }
   }
 
   ngOnDestroy(): void {
     this.running = false;
     this.querySub?.unsubscribe();
+    if (typeof window !== 'undefined') {
+      window.removeEventListener(VIEW_RELOAD_EVENT, this.onShellReload);
+    }
   }
+
+  /** Re-fetch the joined room list on the shell's reload signal. A property (not
+   *  a method) so add/removeEventListener share one function reference. Goes
+   *  through mergeCounts so a refresh never wipes the folded unread badges. */
+  private readonly onShellReload = (): void => {
+    void this.matrix.joinedRoomsDetailed()
+      .then((rooms) => this.rooms.set(this.mergeCounts(rooms)))
+      .catch(() => { /* keep the last known list rather than blanking it */ });
+  };
 
   onRooms(rooms: MatrixRoom[]): void {
     this.rooms.set(this.mergeCounts(rooms));
@@ -136,20 +162,21 @@ export class MatrixChatComponent implements OnInit, OnDestroy {
     while (this.running) {
       try {
         const state = await this.matrix.sync(this.since, 30000);
+        // A REJECTED sync (401 after the session expired, a 503 from the
+        // hsproxy) resolves INSTANTLY with the empty placeholder — it does not
+        // throw — so without this back-off the loop re-requested with zero delay
+        // and pinned a core while hammering the BFF for the life of the tab.
+        if (state.failed) {
+          await new Promise((res) => setTimeout(res, MatrixChatComponent.SYNC_BACKOFF_MS));
+          continue;
+        }
         this.since = state.nextBatch;
-        const next: Record<string, { timeline: TimelineEvent[]; typing: string[]; receipts: ReadReceiptMap }> = { ...this.syncRooms() };
+        const next: Record<string, SyncRoomFeed> = { ...this.syncRooms() };
         for (const roomId of Object.keys(state.rooms)) {
-          const r = state.rooms[roomId];
-          const prev = next[roomId]?.timeline ?? [];
-          // Append new timeline events, de-duped by eventId.
-          const seen = new Set(prev.map((e) => e.eventId));
-          const merged = [...prev];
-          for (const e of r.timeline) if (!seen.has(e.eventId)) merged.push(e);
-          // Fold this delta's receipts into the running latest-read-per-user
-          // map so a reader whose receipt advanced re-anchors onto the newer
-          // event (and drops off the older one) rather than showing on both.
-          const receipts = mergeReadReceipts(next[roomId]?.receipts ?? {}, r.ephemeral.receipts);
-          next[roomId] = { timeline: merged.slice(-200), typing: r.ephemeral.typing, receipts };
+          // Shared fold (append+dedupe timeline, replace typing, accumulate
+          // receipts) — see mergeSyncRoom: the deep-linked room view runs the
+          // SAME merge on its own feed, and the two must not drift.
+          next[roomId] = mergeSyncRoom(next[roomId], state.rooms[roomId]);
         }
         this.syncRooms.set(next);
         // UNREAD BADGES: fold each delta's unread/highlight counts into the
@@ -181,7 +208,7 @@ export class MatrixChatComponent implements OnInit, OnDestroy {
         }
       } catch {
         // Back off briefly on transient sync failure.
-        await new Promise((res) => setTimeout(res, 2000));
+        await new Promise((res) => setTimeout(res, MatrixChatComponent.SYNC_BACKOFF_MS));
       }
     }
   }

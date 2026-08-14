@@ -1,0 +1,43 @@
+<!-- Nothing renders for a user without the external-client grant, and nothing
+     renders while the probe is still in flight — a banner that flashes
+     "unavailable" before the check completes would be its own kind of lie. -->
+@if (state(); as s) {
+  @if (s.status === 'available') {
+    <section class="client-connect client-connect--ok"
+             data-testid="client-connect-banner"
+             aria-labelledby="client-connect-title">
+      <h3 id="client-connect-title" class="client-connect__title">Connect your own Matrix client</h3>
+      <p class="client-connect__lead">
+        Verified just now: this server answered the Matrix client handshake
+        (<code>{{ s.versions.length }}</code> protocol versions).
+      </p>
+      <dl class="client-connect__facts">
+        <dt>Homeserver URL</dt>
+        <dd><code data-testid="client-connect-url">{{ s.homeserverUrl }}</code></dd>
+      </dl>
+      @if (!s.wellKnown) {
+        <p class="client-connect__note" data-testid="client-connect-wellknown-note">
+          Autodiscovery is not set up here, so enter the full URL above rather than
+          just the domain — a client that only accepts a domain will not find this
+          server.
+        </p>
+      }
+    </section>
+  } @else if (s.status === 'unavailable') {
+    <section class="client-connect client-connect--blocked"
+             data-testid="client-connect-banner"
+             aria-labelledby="client-connect-title"
+             role="note">
+      <h3 id="client-connect-title" class="client-connect__title">
+        Connecting your own Matrix client is not yet available
+      </h3>
+      <!-- The REASON, verbatim from the probe. Deliberately concrete: the user
+           can tell an operator exactly what to fix, and nobody is handed a URL
+           that will fail in their client. -->
+      <p class="client-connect__reason" data-testid="client-connect-reason">{{ s.reason }}</p>
+      <p class="client-connect__needed" data-testid="client-connect-needed">
+        Needed before this can work: {{ s.needed }}
+      </p>
+    </section>
+  }
+}
