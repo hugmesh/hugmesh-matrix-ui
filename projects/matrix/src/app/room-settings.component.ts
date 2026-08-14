@@ -21,6 +21,7 @@ import {
 import { CHAT3D_SCENE_TYPE } from './chat3d/chat3d-scene.service';
 import { CHAT3D_AVATAR_TYPE } from './chat3d/chat3d-avatar.service';
 import { senderMayDriveScene } from './vn/scenes/vn-scene-moderation';
+import { mountRoute } from './mount-route';
 
 /** Localpart of the Meshtastic bridge appservice bot (`@meshbridge:<server>`). */
 export const MESH_BRIDGE_BOT_LOCALPART = 'meshbridge';
@@ -40,6 +41,9 @@ export const MESH_BRIDGE_BOT_LOCALPART = 'meshbridge';
   styleUrl: './room-settings.component.scss',
 })
 export class RoomSettingsComponent implements OnInit, OnDestroy {
+  /** This remote's mount point — in-app links resolve against it
+   *  (see mount-route.ts: absolute links bounce out of the remote). */
+  readonly mount = mountRoute();
   private readonly matrix = inject(MatrixService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
@@ -404,6 +408,6 @@ export class RoomSettingsComponent implements OnInit, OnDestroy {
       this.status.set(`Could not leave the room: ${e instanceof Error ? e.message : String(e)}`);
       return;
     }
-    await this.router.navigate(['/rooms']);
+    await this.router.navigate(['rooms'], { relativeTo: this.mount });
   }
 }

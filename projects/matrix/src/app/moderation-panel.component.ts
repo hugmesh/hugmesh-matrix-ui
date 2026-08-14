@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { SessionService } from './session.service';
 import { RoleActionsComponent } from './role-actions.component';
+import { mountRoute } from './mount-route';
 
 /**
  * Dedicated role-aware moderation page (route 'moderation'). A thin container
@@ -26,6 +27,9 @@ import { RoleActionsComponent } from './role-actions.component';
   styleUrl: './moderation-panel.component.scss',
 })
 export class ModerationPanelComponent {
+  /** This remote's mount point — in-app links resolve against it
+   *  (see mount-route.ts: absolute links bounce out of the remote). */
+  readonly mount = mountRoute();
   readonly session = inject(SessionService);
 
   /** Optional pre-filled target user id (bound into the embedded surface). */

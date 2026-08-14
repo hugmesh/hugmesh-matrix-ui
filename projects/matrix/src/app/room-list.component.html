@@ -116,7 +116,7 @@
   <h4 id="people-heading">People</h4>
   <ul aria-labelledby="people-heading">
     <li *ngFor="let r of people()">
-      <a [routerLink]="['/rooms', r.roomId]" class="room"
+      <a [routerLink]="['rooms', r.roomId]" [relativeTo]="mount" class="room"
          [attr.data-testid]="'room-item-' + r.roomId" (click)="select(r)"
          [class.active]="r.roomId === selectedRoomId"
          [attr.aria-current]="r.roomId === selectedRoomId ? 'page' : null">
@@ -131,7 +131,7 @@
   <h4 id="rooms-heading">Rooms</h4>
   <ul aria-labelledby="rooms-heading">
     <li *ngFor="let r of groups()">
-      <a [routerLink]="['/rooms', r.roomId]" class="room"
+      <a [routerLink]="['rooms', r.roomId]" [relativeTo]="mount" class="room"
          [attr.data-testid]="'room-item-' + r.roomId" (click)="select(r)"
          [class.active]="r.roomId === selectedRoomId"
          [attr.aria-current]="r.roomId === selectedRoomId ? 'page' : null">

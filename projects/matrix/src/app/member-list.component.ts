@@ -5,6 +5,7 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { MatrixService, RoomMember } from './matrix.service';
 import { RoleActionsComponent } from './role-actions.component';
 import { accessibleName } from './accessible-name';
+import { mountRoute } from './mount-route';
 
 /**
  * Element Web MemberList / right panel. Joined members with avatar + display
@@ -21,6 +22,9 @@ import { accessibleName } from './accessible-name';
   styleUrl: './member-list.component.scss',
 })
 export class MemberListComponent implements OnInit, OnDestroy {
+  /** This remote's mount point — in-app links resolve against it
+   *  (see mount-route.ts: absolute links bounce out of the remote). */
+  readonly mount = mountRoute();
   private readonly matrix = inject(MatrixService);
   private readonly route = inject(ActivatedRoute);
 

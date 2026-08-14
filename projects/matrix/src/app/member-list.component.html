@@ -1,7 +1,7 @@
 <section class="member-list" data-testid="member-list" aria-label="Room members">
   <header>
     <h3>Members ({{ members().length }})</h3>
-    <a [routerLink]="['/rooms', roomId()]"><span aria-hidden="true">←</span> Back</a>
+    <a [routerLink]="['rooms', roomId()]" [relativeTo]="mount"><span aria-hidden="true">←</span> Back</a>
   </header>
 
   <div class="invite-row">

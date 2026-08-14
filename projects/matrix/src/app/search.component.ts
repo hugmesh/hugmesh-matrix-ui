@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { MatrixService, SearchResult } from './matrix.service';
+import { mountRoute } from './mount-route';
 
 /**
  * Element Web RoomSearchView / search results panel. Full-text message search
@@ -18,6 +19,9 @@ import { MatrixService, SearchResult } from './matrix.service';
   styleUrl: './search.component.scss',
 })
 export class SearchComponent implements OnInit {
+  /** This remote's mount point — in-app links resolve against it
+   *  (see mount-route.ts: absolute links bounce out of the remote). */
+  readonly mount = mountRoute();
   private readonly matrix = inject(MatrixService);
   private readonly route = inject(ActivatedRoute);
 

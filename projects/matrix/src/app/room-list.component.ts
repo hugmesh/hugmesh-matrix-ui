@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { MatrixService, MatrixRoom, PendingInvite } from './matrix.service';
 import { SessionService } from './session.service';
+import { mountRoute } from './mount-route';
 
 /**
  * Element Web LeftPanel / RoomList. Lists joined rooms grouped into Rooms vs
@@ -18,6 +19,9 @@ import { SessionService } from './session.service';
   styleUrl: './room-list.component.scss',
 })
 export class RoomListComponent implements OnInit {
+  /** This remote's mount point — in-app links resolve against it
+   *  (see mount-route.ts: absolute links bounce out of the remote). */
+  readonly mount = mountRoute();
   private readonly matrix = inject(MatrixService);
   private readonly session = inject(SessionService);
 

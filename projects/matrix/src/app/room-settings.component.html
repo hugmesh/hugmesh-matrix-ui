@@ -1,7 +1,7 @@
 <section class="room-settings" data-testid="room-settings" aria-label="Room settings">
   <header>
     <h3>Room settings</h3>
-    <a [routerLink]="['/rooms', roomId()]"><span aria-hidden="true">←</span> Back</a>
+    <a [routerLink]="['rooms', roomId()]" [relativeTo]="mount"><span aria-hidden="true">←</span> Back</a>
   </header>
 
   <label for="rs-name">Name

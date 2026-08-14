@@ -3,10 +3,10 @@
     <h2>Matrix</h2>
     <p data-testid="matrix-whoami" *ngIf="userId() as id">Signed in as {{ id }}</p>
     <nav class="nav" aria-label="Matrix sections" aria-describedby="matrix-nav-help">
-      <a [routerLink]="['/search']">Search</a>
-      <a [routerLink]="['/settings']">Settings</a>
-      <a [routerLink]="['/moderation']">Moderation</a>
-      <a [routerLink]="['/call']" [queryParams]="{ room: current()?.roomId }">Call</a>
+      <a [routerLink]="['search']" [relativeTo]="mount">Search</a>
+      <a [routerLink]="['settings']" [relativeTo]="mount">Settings</a>
+      <a [routerLink]="['moderation']" [relativeTo]="mount">Moderation</a>
+      <a [routerLink]="['call']" [relativeTo]="mount" [queryParams]="{ room: current()?.roomId }">Call</a>
     </nav>
     <p id="matrix-nav-help" class="section-help" data-testid="matrix-nav-help">
       Jump between sections: Search messages, your Settings, Moderation and safety tools, and a video

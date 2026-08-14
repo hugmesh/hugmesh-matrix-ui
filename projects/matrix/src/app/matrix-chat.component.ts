@@ -5,6 +5,7 @@ import { MatrixService, MatrixRoom, ReadReceiptMap, TimelineEvent, mergeReadRece
 import { RoomListComponent } from './room-list.component';
 import { RoomViewComponent } from './room-view.component';
 import { ChatThemeRootDirective } from './theme/chat-theme-root.directive';
+import { mountRoute } from './mount-route';
 
 /**
  * Standalone Matrix chat shell. Federated into the hugmesh.net host and
@@ -30,6 +31,9 @@ import { ChatThemeRootDirective } from './theme/chat-theme-root.directive';
   styleUrl: './matrix-chat.component.scss',
 })
 export class MatrixChatComponent implements OnInit, OnDestroy {
+  /** This remote's mount point — in-app links resolve against it
+   *  (see mount-route.ts: absolute links bounce out of the remote). */
+  readonly mount = mountRoute();
   private readonly matrix = inject(MatrixService);
   private readonly route = inject(ActivatedRoute);
 

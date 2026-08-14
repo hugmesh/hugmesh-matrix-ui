@@ -8,6 +8,7 @@ import { HugCharacterPanelComponent } from './vn/hug-character-panel.component';
 import { DEFAULT_EXPRESSION, Expression, expressionForEvent } from './vn/expression';
 import { ChatThemeRootDirective } from './theme/chat-theme-root.directive';
 import { Chat3dStateService } from './chat3d/chat3d-state.service';
+import { mountRoute } from './mount-route';
 
 type ComposerMode = 'send' | 'reply' | 'edit' | 'thread';
 
@@ -28,6 +29,9 @@ type ComposerMode = 'send' | 'reply' | 'edit' | 'thread';
   styleUrl: './room-view.component.scss',
 })
 export class RoomViewComponent implements OnInit, OnChanges, OnDestroy {
+  /** This remote's mount point — in-app links resolve against it
+   *  (see mount-route.ts: absolute links bounce out of the remote). */
+  readonly mount = mountRoute();
   private readonly matrix = inject(MatrixService);
   private readonly route = inject(ActivatedRoute);
   private readonly chat3d = inject(Chat3dStateService);

@@ -66,7 +66,7 @@
              [attr.aria-label]="'Download file ' + row.event.body">{{ row.event.body }}</a>
 
           <a *ngIf="row.event.threadReplyCount"
-             [routerLink]="['/rooms', roomId, 'thread', row.event.eventId]"
+             [routerLink]="['rooms', roomId, 'thread', row.event.eventId]" [relativeTo]="mount"
              class="thread-summary" [attr.data-testid]="'thread-summary-' + row.event.eventId">
             {{ row.event.threadReplyCount }} replies in thread
           </a>

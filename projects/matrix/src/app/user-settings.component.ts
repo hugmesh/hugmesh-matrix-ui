@@ -19,6 +19,7 @@ import {
   defaultChatTheme,
 } from './theme/chat-theme.service';
 import { ChatThemeRootDirective } from './theme/chat-theme-root.directive';
+import { mountRoute } from './mount-route';
 
 /**
  * Render a mesh device's `lastSeenAt` as a coarse relative time ("just now",
@@ -63,6 +64,9 @@ export function relativeTimeLabel(iso: string | null | undefined, nowMs: number 
   styleUrl: './user-settings.component.scss',
 })
 export class UserSettingsComponent implements OnInit, OnDestroy {
+  /** This remote's mount point — in-app links resolve against it
+   *  (see mount-route.ts: absolute links bounce out of the remote). */
+  readonly mount = mountRoute();
   private readonly matrix = inject(MatrixService);
   private readonly userBff = inject(UserBffService);
   readonly chatTheme = inject(ChatThemeService);
