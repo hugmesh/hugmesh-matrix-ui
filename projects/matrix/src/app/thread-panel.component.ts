@@ -4,6 +4,7 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { MatrixService, TimelineEvent } from './matrix.service';
 import { ComposerComponent } from './composer.component';
 import { ChatThemeRootDirective } from './theme/chat-theme-root.directive';
+import { mountRoute } from './mount-route';
 
 /**
  * Element Web ThreadView / ThreadPanel. Shows a thread root + its m.thread
@@ -20,6 +21,9 @@ import { ChatThemeRootDirective } from './theme/chat-theme-root.directive';
   styleUrl: './thread-panel.component.scss',
 })
 export class ThreadPanelComponent implements OnInit, OnDestroy {
+  /** This remote's mount point — in-app links resolve against it
+   *  (see mount-route.ts: absolute links bounce out of the remote). */
+  readonly mount = mountRoute();
   private readonly matrix = inject(MatrixService);
   private readonly route = inject(ActivatedRoute);
 

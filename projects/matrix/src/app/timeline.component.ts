@@ -5,6 +5,7 @@ import { MESH_SENDER_PATTERN, MatrixService, Paginated, Reaction, ReadReceiptMap
 import { SessionService } from './session.service';
 import { ReactionPickerComponent } from './reaction-picker.component';
 import { accessibleName } from './accessible-name';
+import { mountRoute } from './mount-route';
 
 interface TimelineRow {
   event: TimelineEvent;
@@ -39,6 +40,9 @@ interface ReceiptChip {
   styleUrl: './timeline.component.scss',
 })
 export class TimelineComponent implements OnChanges {
+  /** This remote's mount point — in-app links resolve against it
+   *  (see mount-route.ts: absolute links bounce out of the remote). */
+  readonly mount = mountRoute();
   private readonly matrix = inject(MatrixService);
   private readonly session = inject(SessionService);
   private readonly host: ElementRef<HTMLElement> = inject(ElementRef);

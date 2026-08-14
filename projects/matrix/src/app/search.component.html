@@ -18,7 +18,7 @@
   <ul class="results" aria-label="Search results">
     <li *ngFor="let r of results()" class="result"
         [attr.data-testid]="'search-result-' + r.event.eventId">
-      <a [routerLink]="['/rooms', r.roomId]" [queryParams]="{ event: r.event.eventId }">
+      <a [routerLink]="['rooms', r.roomId]" [relativeTo]="mount" [queryParams]="{ event: r.event.eventId }">
         <span class="sender">{{ r.event.senderDisplayName || r.event.sender }}</span>
         <span class="room">in {{ r.roomId }}</span>
         <span class="snippet">{{ r.event.body }}</span>

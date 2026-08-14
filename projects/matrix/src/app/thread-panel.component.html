@@ -1,6 +1,6 @@
 <section class="thread-panel" data-testid="thread-panel" aria-label="Thread">
   <header><h3>Thread</h3>
-    <a [routerLink]="['/rooms', roomId()]"><span aria-hidden="true">←</span> Back to room</a></header>
+    <a [routerLink]="['rooms', roomId()]" [relativeTo]="mount"><span aria-hidden="true">←</span> Back to room</a></header>
 
   <div *ngIf="root() as r" class="thread-root" data-testid="thread-root">
     <strong>{{ r.senderDisplayName || r.sender }}</strong>
@@ -25,7 +25,7 @@
     <ul aria-labelledby="all-threads-heading">
       <li *ngFor="let t of threadRoots()"
           [attr.data-testid]="'thread-list-item-' + t.eventId">
-        <a [routerLink]="['/rooms', roomId(), 'thread', t.eventId]">
+        <a [routerLink]="['rooms', roomId(), 'thread', t.eventId]" [relativeTo]="mount">
           {{ t.senderDisplayName || t.sender }}: {{ t.body }}
         </a>
       </li>

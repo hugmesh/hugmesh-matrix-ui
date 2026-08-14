@@ -1,7 +1,7 @@
 <section class="user-settings" data-testid="user-settings" aria-label="User settings">
   <header>
     <h3>User settings</h3>
-    <a [routerLink]="['/']"><span aria-hidden="true">←</span> Back to chat</a>
+    <a [routerLink]="['./']" [relativeTo]="mount"><span aria-hidden="true">←</span> Back to chat</a>
   </header>
 
   <p class="uid">Signed in as <strong>{{ userId() }}</strong></p>

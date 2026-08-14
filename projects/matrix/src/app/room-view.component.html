@@ -11,29 +11,29 @@
       <!-- Embedded calls: both land on the existing /call route with ?room=;
            mode=vn-voice renders the audio-only VN stage, mode=video the
            original camera tiles (the default when mode is absent/unknown). -->
-      <a [routerLink]="['/call']" [queryParams]="{ room: rid, mode: 'vn-voice' }"
+      <a [routerLink]="['call']" [relativeTo]="mount" [queryParams]="{ room: rid, mode: 'vn-voice' }"
          data-testid="btn-call-vn-voice" aria-label="Voice chat (VN)" title="Voice chat (VN)">
         <span aria-hidden="true">🎭</span>
       </a>
-      <a [routerLink]="['/call']" [queryParams]="{ room: rid, mode: 'video' }"
+      <a [routerLink]="['call']" [relativeTo]="mount" [queryParams]="{ room: rid, mode: 'video' }"
          data-testid="btn-call-video" aria-label="Video call" title="Video call">
         <span aria-hidden="true">📹</span>
       </a>
       <!-- 3D room (Shadows of the Net): rendered ONLY when the room's
            net.hugmesh.chat3d state parses enabled — no dangling door
            into a room that will refuse to load. -->
-      <a *ngIf="chat3dEnabled()" [routerLink]="['/rooms', rid, 'chat3d']"
+      <a *ngIf="chat3dEnabled()" [routerLink]="['rooms', rid, 'chat3d']" [relativeTo]="mount"
          data-testid="btn-chat3d" aria-label="3D room (Shadows of the Net)"
          title="3D room (Shadows of the Net)">
         <span aria-hidden="true">🥽</span>
       </a>
-      <a [routerLink]="['/rooms', rid, 'members']" data-testid="btn-member-list" aria-label="Members">
+      <a [routerLink]="['rooms', rid, 'members']" [relativeTo]="mount" data-testid="btn-member-list" aria-label="Members">
         <span aria-hidden="true">👥</span>
       </a>
-      <a [routerLink]="['/search']" [queryParams]="{ room: rid }" data-testid="btn-room-search" aria-label="Search this room">
+      <a [routerLink]="['search']" [relativeTo]="mount" [queryParams]="{ room: rid }" data-testid="btn-room-search" aria-label="Search this room">
         <span aria-hidden="true">🔍</span>
       </a>
-      <a [routerLink]="['/rooms', rid, 'settings']" data-testid="btn-room-settings" aria-label="Room settings">
+      <a [routerLink]="['rooms', rid, 'settings']" [relativeTo]="mount" data-testid="btn-room-settings" aria-label="Room settings">
         <span aria-hidden="true">⚙️</span>
       </a>
     </nav>
