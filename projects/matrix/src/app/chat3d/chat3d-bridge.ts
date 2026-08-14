@@ -38,7 +38,7 @@ export const CHAT3D_PROTOCOL_VERSION = 1;
  * the same value is a room that can never load.
  */
 export const GAMES_BASE_URL = new InjectionToken<string>('GAMES_BASE_URL', {
-  factory: () => (globalThis as any).__HUG_GAMES_URL__ ?? 'https://games.hugmesh.systems',
+  factory: () => (globalThis as any).__HUG_GAMES_URL__ ?? 'https://games.hugmesh.net',
 });
 
 /** Path of the shadows-of-the-net web export inside the games portal (the

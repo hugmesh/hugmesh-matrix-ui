@@ -1,13 +1,13 @@
 import { Injectable, InjectionToken, inject } from '@angular/core';
 
 /**
- * Homeserver name (e.g. `matrix.hugmesh.systems`). NOT a base URL the client
+ * Homeserver name (e.g. `matrix.hugmesh.net`). NOT a base URL the client
  * dials — the browser NEVER talks to the homeserver directly. It is kept only as
  * non-secret metadata for `mxc://` parsing (server-name extraction). Overridable
  * via the shared `__HUG_MATRIX_URL__` hook.
  */
 export const MATRIX_BASE_URL = new InjectionToken<string>('MATRIX_BASE_URL', {
-  factory: () => (globalThis as any).__HUG_MATRIX_URL__ ?? 'https://matrix.hugmesh.systems',
+  factory: () => (globalThis as any).__HUG_MATRIX_URL__ ?? 'https://matrix.hugmesh.net',
 });
 
 /** Base URL of the user-bff-api hsproxy + AI-cloak media proxy. Same-origin by

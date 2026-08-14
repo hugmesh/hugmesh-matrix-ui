@@ -78,7 +78,7 @@ const MAX_QUEUED_CANDIDATES = 64;
 /**
  * Matrix 1:1 call. Real WebRTC (RTCPeerConnection + getUserMedia); the
  * Matrix room carries the signalling as m.call.invite / m.call.answer /
- * m.call.candidate events. Federated into the hugmesh.systems host and
+ * m.call.candidate events. Federated into the hugmesh.net host and
  * rendered at /social/matrix/call. This is our custom hugmesh-matrix-ui
  * call module — it does not depend on Element.
  *

@@ -13,7 +13,7 @@ import { Chat3dJoinComponent } from './chat3d/chat3d-join.component';
 
 /**
  * These specs lock down the federation contract: `./routes` (exposed under the
- * remote name "matrix") is the single module the hugmesh.systems host mounts
+ * remote name "matrix") is the single module the hugmesh.net host mounts
  * at /social/matrix. The host depends on these paths and components, so a
  * regression here would silently break the host.
  */

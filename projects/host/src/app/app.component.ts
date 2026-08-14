@@ -4,7 +4,7 @@ import { RouterLink, RouterOutlet } from '@angular/router';
 import { SessionService } from './session.service';
 
 /**
- * Demo host standing in for the hugmesh.systems Angular front page. In
+ * Demo host standing in for the hugmesh.net Angular front page. In
  * production this host federates the login/matrix/mastodon/admin micro-frontends
  * (each its own repo + nginx). Matrix/Mastodon links appear only after full
  * registration; the Admin link only for the Casdoor admin role.
@@ -21,7 +21,7 @@ import { SessionService } from './session.service';
   imports: [CommonModule, RouterLink, RouterOutlet],
   template: `
     <header>
-      <a routerLink="/" data-testid="brand">hugmesh.systems</a>
+      <a routerLink="/" data-testid="brand">hugmesh.net</a>
       <nav>
         <ng-container *ngIf="session.loggedIn(); else anon">
           <ng-container *ngIf="session.fullyRegistered()">
@@ -102,7 +102,7 @@ import { SessionService } from './session.service';
     <main>
       <router-outlet />
       <p *ngIf="!session.loggedIn()" data-testid="welcome">
-        Welcome to hugmesh.systems. Sign in to reach the federated
+        Welcome to hugmesh.net. Sign in to reach the federated
         <strong>Matrix</strong> and <strong>Mastodon</strong> communities.
       </p>
     </main>
@@ -113,6 +113,6 @@ export class AppComponent {
   // Admin-only observability link (Uptrace), reached through the pki gateway.
   // The login remote brokers service tokens into the shared session; each
   // remote reads its own token, so the shell injects nothing.
-  readonly uptraceUrl = (globalThis as any).__HUG_UPTRACE_URL__ ?? 'https://uptrace.hugmesh.systems';
+  readonly uptraceUrl = (globalThis as any).__HUG_UPTRACE_URL__ ?? 'https://uptrace.hugmesh.net';
   logout(): void { this.session.clear(); location.href = '/'; }
 }

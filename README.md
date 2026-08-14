@@ -2,7 +2,7 @@
 
 The **Matrix** Angular micro-frontend (native-federation **remote** named
 `matrix`) for the
-[hugmesh.systems](https://github.com/hugmesh/hugmesh-host-shell)
+[hugmesh.net](https://github.com/hugmesh/hugmesh-host-shell)
 host shell, plus a small demo host for local dev/E2E. The remote is federated
 into the host at runtime and served at `/social/matrix` by the
 `hugmesh-fe-gateway` (Spring Cloud Gateway) on the frontend nodes.
@@ -33,7 +33,7 @@ via `loadRemoteModule('matrix', './routes')` and mounts `MATRIX_ROUTES` at
 `/social/matrix` behind its `registeredGuard`. The shared-deps surface
 (`shareAll` singletons + `strictVersion` + the RxJS skip list) is centralised in
 the repo-root `federation-base.js` so the host and this remote can't drift into
-a `shared is not a function` runtime failure — mirrors the hugmesh.systems
+a `shared is not a function` runtime failure — mirrors the hugmesh.net
 host shell.
 
 ## Role-gate
@@ -386,7 +386,7 @@ protection" escape hatch, and an **honest** badge — `AI-cloak applied` /
 
 Login/registration are delegated entirely to the **login** remote's own native
 form, which POSTs credentials directly to its own BFF's login endpoint — the
-platform's **native-login** model. **Casdoor** (`id.hugmesh.systems`) is
+platform's **native-login** model. **Casdoor** (`id.hugmesh.net`) is
 reached ONLY internally, server-to-server, from that BFF; it never redirects
 the browser and the browser never sees a Casdoor-hosted page. Per-session JWT
 custody/refresh live in the **user-bff** — the browser never holds (and the user
@@ -433,7 +433,7 @@ fe-gateway proxies `/bff/**`).
 
 ## BFFs it talks to
 
-- **homeserver** (`matrix.hugmesh.systems`, reached ONLY via the user-bff
+- **homeserver** (`matrix.hugmesh.net`, reached ONLY via the user-bff
   hsproxy at `/bff/user/matrix`) — the Matrix Client-Server API for everything
   chat/call.
 - **user-bff** (`/bff/user/**`, `hugmesh-user-bff-api`,
@@ -517,7 +517,7 @@ Solid edges are **✅ shipped** on `main`; the dashed `Roadmap` subgraph is
 ```mermaid
 flowchart TD
   browser["Browser"]
-  host["hugmesh.systems host shell<br/>(native-federation dynamic host)"]
+  host["hugmesh.net host shell<br/>(native-federation dynamic host)"]
   browser --> host
   host -->|"registeredGuard on /social/matrix<br/>loadRemoteModule('matrix','./routes')"| remote
 

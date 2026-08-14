@@ -7,7 +7,7 @@ import { RoomViewComponent } from './room-view.component';
 import { ChatThemeRootDirective } from './theme/chat-theme-root.directive';
 
 /**
- * Standalone Matrix chat shell. Federated into the hugmesh.systems host and
+ * Standalone Matrix chat shell. Federated into the hugmesh.net host and
  * rendered at /social/matrix for logged-in users. Evolved from the original
  * polled chat into a 3-pane Element-like shell: <hug-room-list> on the left and
  * <hug-room-view> (timeline + composer) in the center, driven by a sync()

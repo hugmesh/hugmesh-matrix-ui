@@ -44,10 +44,10 @@ describe('GAMES_BASE_URL (env hook + CSP-agreeing default)', () => {
   });
 
   it('defaults to the SAME origin nginx.conf allows in frame-src', () => {
-    // nginx.conf: map "" $games_origin { default "https://games.hugmesh.systems"; }
+    // nginx.conf: map "" $games_origin { default "https://games.hugmesh.net"; }
     // Two disagreeing defaults for one value = a frame the CSP always blocks.
-    expect(TestBed.inject(GAMES_BASE_URL)).toBe('https://games.hugmesh.systems');
-    expect(new URL(TestBed.inject(GAMES_BASE_URL)).origin).toBe('https://games.hugmesh.systems');
+    expect(TestBed.inject(GAMES_BASE_URL)).toBe('https://games.hugmesh.net');
+    expect(new URL(TestBed.inject(GAMES_BASE_URL)).origin).toBe('https://games.hugmesh.net');
   });
 });
 
@@ -67,17 +67,17 @@ describe('chat3dFrameUrl', () => {
 });
 
 describe('originAllowed (games-origin allow-list)', () => {
-  const allow = ['https://games.hugmesh.systems'];
+  const allow = ['https://games.hugmesh.net'];
 
   it('accepts ONLY an exact full-origin match', () => {
-    expect(originAllowed('https://games.hugmesh.systems', allow)).toBeTrue();
+    expect(originAllowed('https://games.hugmesh.net', allow)).toBeTrue();
   });
 
   it('rejects lookalike, prefix, suffix, scheme and empty origins', () => {
-    expect(originAllowed('https://games.hugmesh.systems.evil.tld', allow)).toBeFalse();
-    expect(originAllowed('https://evil.games.hugmesh.systems', allow)).toBeFalse();
-    expect(originAllowed('http://games.hugmesh.systems', allow)).toBeFalse();
-    expect(originAllowed('https://games.hugmesh.system', allow)).toBeFalse();
+    expect(originAllowed('https://games.hugmesh.net.evil.tld', allow)).toBeFalse();
+    expect(originAllowed('https://evil.games.hugmesh.net', allow)).toBeFalse();
+    expect(originAllowed('http://games.hugmesh.net', allow)).toBeFalse();
+    expect(originAllowed('https://games.hugmesh.ne', allow)).toBeFalse();
     expect(originAllowed('', allow)).toBeFalse();
     expect(originAllowed('null', allow)).toBeFalse();
   });
@@ -308,7 +308,7 @@ describe('hostMsg (outbound §5 envelope builders)', () => {
 describe('mxidLocalpart (the nametag fallback both sides must agree on)', () => {
   it('reduces an mxid to the localpart the game derives from the id alone', () => {
     expect(mxidLocalpart('@alice:example.org')).toBe('alice');
-    expect(mxidLocalpart('@a.b-c_d:matrix.hugmesh.systems')).toBe('a.b-c_d');
+    expect(mxidLocalpart('@a.b-c_d:matrix.hugmesh.net')).toBe('a.b-c_d');
   });
 
   it('leaves anything that is not an mxid untouched (never returns empty)', () => {

@@ -4,7 +4,7 @@
  *
  * Served-standalone (`ng serve matrix`) this is the page's only stylesheet, so
  * the remote must be accessible on its own; when federated into the
- * hugmesh.systems host the host already ships the same rules, so the two
+ * hugmesh.net host the host already ships the same rules, so the two
  * layers agree. Copied from the host styles.scss a11y rules (two-layer
  * :focus-visible ring, underlined links, pointer:coarse 44px targets, the .sr
  * util, the --hug-* WCAG palette, prefers-reduced-motion + prefers-contrast).
@@ -15,7 +15,7 @@
 
 
 /* HugMesh WCAG-AA/AAA palette — centralised as runtime :root custom
- * properties (mirrors hugmesh.systems / hugmesh.games src/styles.scss).
+ * properties (mirrors hugmesh.net / hugmesh.games src/styles.scss).
  * Each token carries its contrast ratio against #0a0a12 (the darkest shell
  * background) so a future contrast regression is obvious at the source. The
  * neon SCSS tokens (styles/_tokens.scss) drive the visual theme; these --hug-*

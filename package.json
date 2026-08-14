@@ -1,7 +1,7 @@
 {
   "name": "@hugmesh/matrix",
   "version": "0.1.0",
-  "description": "hugmesh.systems demo host shell + the Matrix native-federation remote. Mastodon/login/admin remotes live in their own repos and federate in at runtime.",
+  "description": "hugmesh.net demo host shell + the Matrix native-federation remote. Mastodon/login/admin remotes live in their own repos and federate in at runtime.",
   "license": "MIT",
   "private": true,
   "scripts": {

@@ -1,6 +1,6 @@
 # hugmesh-matrix-ui — builds the Matrix native-federation REMOTE
 # (projects/matrix → dist/matrix) and serves it via nginx with CORS so the
-# hugmesh.systems host can fetch its remoteEntry.json cross-origin.
+# hugmesh.net host can fetch its remoteEntry.json cross-origin.
 # Deployed to the hugmesh-frontend namespace, fronted by the fe-gateway at
 # /social/matrix. (projects/host is a local dev/E2E shell only, not deployed.)
 # Angular CLI 22 requires Node >= 24.15.
