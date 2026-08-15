@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
 import { RoomListComponent } from './room-list.component';
 import { MatrixService, MatrixRoom } from './matrix.service';
 import { SessionService, HugSession } from './session.service';
@@ -129,6 +129,90 @@ describe('RoomListComponent', () => {
     fixture.detectChanges();
     expect(createBtn.getAttribute('aria-expanded')).toBe('true');
     expect(fixture.nativeElement.querySelector('[data-testid="dialog-create-room"]')).toBeTruthy();
+  });
+
+  describe('room activation — click switches in place, double click opens a new tab', () => {
+    const roomLink = (id: string): HTMLAnchorElement =>
+      fixture.nativeElement.querySelector(`[data-testid="room-item-${id}"]`);
+    const plainClick = () => new MouseEvent('click', { button: 0, cancelable: true });
+
+    it('the row is a real anchor with a mount-relative href', () => {
+      // The href is what middle-click / ctrl-click / "Open link in new tab" act on, so it has
+      // to be a genuine link and not a bare clickable div.
+      expect(roomLink('!grp:test').getAttribute('href')).toBe('/rooms/!grp:test');
+    });
+
+    it('SINGLE CLICK switches the room IN PLACE — no navigation away from the shell', () => {
+      // The row used to be an <a routerLink> to rooms/:roomId that ALSO emitted roomSelected.
+      // Embedded in the 3-pane shell both ran: the pane swapped correctly, then the router
+      // replaced the whole layout with the standalone room-only view. Selecting must win.
+      const selected: string[] = [];
+      component.roomSelected.subscribe((r) => selected.push(r.roomId));
+      const navSpy = spyOn(TestBed.inject(Router), 'navigateByUrl');
+
+      roomLink('!grp:test').dispatchEvent(plainClick());
+
+      expect(selected).withContext('the room is selected in place').toEqual(['!grp:test']);
+      expect(navSpy)
+        .withContext('navigation to the room-only screen must NOT happen')
+        .not.toHaveBeenCalled();
+    });
+
+    it('with NO listener (the standalone /rooms page) it NAVIGATES to the room view', () => {
+      // Nothing is subscribed here, mirroring RoomListComponent mounted as its own route, where
+      // rooms/:roomId IS the correct destination. Asserted on the ROUTER rather than on
+      // defaultPrevented: we own the click and preventDefault in both branches, so only the
+      // navigation itself distinguishes them.
+      const navSpy = spyOn(TestBed.inject(Router), 'navigateByUrl');
+      roomLink('!grp:test').dispatchEvent(plainClick());
+      expect(navSpy).toHaveBeenCalledWith('/rooms/!grp:test');
+    });
+
+    it('a MODIFIED click is NOT intercepted, so ctrl/cmd/middle-click still open a new tab', () => {
+      // Called directly rather than dispatched on the anchor ON PURPOSE: the whole point is
+      // that these are left un-prevented, so dispatching them on a live <a href> makes the
+      // browser follow the link and navigate the test runner away (it disconnects).
+      const selected: string[] = [];
+      component.roomSelected.subscribe((r) => selected.push(r.roomId));
+      const navSpy = spyOn(TestBed.inject(Router), 'navigateByUrl');
+
+      for (const init of [
+        { ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { altKey: true }, { button: 1 },
+      ]) {
+        const ev = new MouseEvent('click', { button: 0, cancelable: true, ...init });
+        component.onRoomClick(ROOMS[0], ev);
+        expect(ev.defaultPrevented)
+          .withContext(`modified click ${JSON.stringify(init)} must keep native behaviour`)
+          .toBeFalse();
+      }
+      expect(selected).withContext('a modified click does not select in place').toEqual([]);
+      expect(navSpy).withContext('a modified click does not SPA-navigate').not.toHaveBeenCalled();
+    });
+
+    it('DOUBLE CLICK opens the room in a new tab at its MOUNT-RELATIVE url', () => {
+      const openSpy = spyOn(window, 'open').and.returnValue(null);
+
+      roomLink('!dm:test').dispatchEvent(new MouseEvent('dblclick', { cancelable: true }));
+
+      expect(openSpy).toHaveBeenCalledTimes(1);
+      const [url, target, features] = openSpy.calls.mostRecent().args;
+      // Serialized from the Router, not hand-built: a literal /rooms/<id> is the mount-route.ts
+      // defect that bounces the user out of Matrix when federated under the host shell.
+      expect(url).toBe('/rooms/!dm:test');
+      expect(target).toBe('_blank');
+      expect(features).withContext('the new tab must not get a window.opener handle').toContain('noopener');
+    });
+
+    it('double click does not lose the in-place selection made by its first click', () => {
+      const selected: string[] = [];
+      component.roomSelected.subscribe((r) => selected.push(r.roomId));
+      spyOn(window, 'open').and.returnValue(null);
+
+      roomLink('!dm:test').dispatchEvent(plainClick());
+      roomLink('!dm:test').dispatchEvent(new MouseEvent('dblclick', { cancelable: true }));
+
+      expect(selected).withContext('the room is still switched to').toEqual(['!dm:test']);
+    });
   });
 
   it('marks the selected room with aria-current=page', () => {

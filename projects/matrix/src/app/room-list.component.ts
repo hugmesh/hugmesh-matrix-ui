@@ -1,7 +1,7 @@
 import { Component, EventEmitter, Input, OnInit, Output, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { Router } from '@angular/router';
 import { MatrixService, MatrixRoom, PendingInvite } from './matrix.service';
 import { SessionService } from './session.service';
 import { mountRoute } from './mount-route';
@@ -14,7 +14,7 @@ import { mountRoute } from './mount-route';
 @Component({
   selector: 'hug-room-list',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule],
   templateUrl: './room-list.component.html',
   styleUrl: './room-list.component.scss',
 })
@@ -24,6 +24,7 @@ export class RoomListComponent implements OnInit {
   readonly mount = mountRoute();
   private readonly matrix = inject(MatrixService);
   private readonly session = inject(SessionService);
+  private readonly router = inject(Router);
 
   /** Optionally fed by the host shell so the list reuses the sync data. */
   @Input() rooms = signal<MatrixRoom[]>([]);
@@ -140,6 +141,74 @@ export class RoomListComponent implements OnInit {
 
   select(r: MatrixRoom): void {
     this.roomSelected.emit(r);
+  }
+
+  /**
+   * SINGLE CLICK — swap the room IN PLACE, without leaving the 3-pane shell.
+   *
+   * <p>The room row is an {@code <a [routerLink]>} to {@code rooms/:roomId}, and it also
+   * emitted {@code roomSelected}. Embedded in {@code MatrixChatComponent} BOTH ran: the shell
+   * swapped its {@code current()} pane correctly, and then the router replaced the whole
+   * 3-pane layout with the standalone {@link RoomViewComponent} — a screen showing just the
+   * one room, with the room list gone. The in-place switch was working and being clobbered a
+   * frame later, so picking a second room meant going back first.
+   *
+   * <p>The anchor STAYS an anchor: a real {@code href} is what makes middle-click, ctrl/cmd
+   * -click and "Open link in new tab" work, and those are affordances people already have.
+   * So a MODIFIED click is never intercepted — only a plain primary click is.
+   *
+   * <p>When nothing is listening to {@code roomSelected} the link is left alone and navigates
+   * normally. That is the standalone {@code /rooms} page, where {@code rooms/:roomId} IS the
+   * right destination; it also means an embedder that forgets to bind the output degrades to
+   * a working link rather than a dead row.
+   */
+  onRoomClick(r: MatrixRoom, ev: MouseEvent): void {
+    if (ev.button !== 0 || ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.altKey) return;
+    ev.preventDefault();
+    if (this.roomSelected.observed) {
+      this.select(r);
+      return;
+    }
+    // Standalone /rooms page: nobody is listening, so rooms/:roomId IS the destination.
+    // Navigate through the Router (not the raw href) to keep it an SPA transition.
+    void this.router.navigateByUrl(this.roomHref(r));
+  }
+
+  /**
+   * The room's URL, mount-relative and serialized.
+   *
+   * <p>Bound as a plain {@code href} rather than a {@code routerLink}, DELIBERATELY.
+   * {@code RouterLink.onClick} inspects only the mouse button and modifier keys and then
+   * calls {@code navigateByUrl} — it never consults {@code event.defaultPrevented}. So a
+   * {@code (click)} handler that merely calls {@code preventDefault()} does NOT stop it: the
+   * directive still navigates and still replaces the 3-pane shell with the room-only screen.
+   * Owning the click outright is the only way to make in-place selection actually win, and it
+   * keeps a real {@code href} so middle-click / ctrl-click / "Open in new tab" still work.
+   */
+  roomHref(r: MatrixRoom): string {
+    return this.router.serializeUrl(
+      this.router.createUrlTree(['rooms', r.roomId], { relativeTo: this.mount }),
+    );
+  }
+
+  /**
+   * DOUBLE CLICK — open the room in a NEW TAB.
+   *
+   * <p>The URL is built with {@code createUrlTree(..., {relativeTo: mount})} rather than
+   * hand-assembled: the injected Router is the HOST SHELL's when federated, so a literal
+   * {@code /rooms/<id>} matches no shell route and bounces out of Matrix entirely (the
+   * mount-route.ts defect). Serializing the mount-relative tree yields
+   * {@code /social/matrix/rooms/<id>} under the shell and {@code /rooms/<id>} standalone.
+   *
+   * <p>The preceding single click has already selected the room in place, so a double click
+   * both switches the pane and opens the tab. That is deliberate: suppressing the first click
+   * would need a ~250ms timer on EVERY room switch, paying latency on the common action to
+   * tidy up the rare one.
+   */
+  onRoomDblClick(r: MatrixRoom, ev: MouseEvent): void {
+    ev.preventDefault();
+    // 'noopener' — the new tab must not get a handle on this window via window.opener.
+    window.open(this.roomHref(r), '_blank', 'noopener');
   }
 
   async create(ev: Event): Promise<void> {
