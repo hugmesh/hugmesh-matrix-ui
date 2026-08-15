@@ -411,8 +411,8 @@ This remote ships **no** global HTTP interceptor — each service attaches
   HttpOnly `bff_` cookie. The proxy **owns/injects the upstream homeserver
   token and strips any inbound bearer/cookie**, so no homeserver access token
   is ever held or attached client-side — Matrix rides the platform's user-bff
-  token-custody model. Synapse runs OIDC SSO against the same Casdoor, so the
-  remote never renders a Matrix login form.
+  token-custody model, so the remote never renders a Matrix login form (auth
+  flows entirely through that broker, not a homeserver-side login screen).
 
 > ✅ **Security posture: cookie-only auth, no bearer in `localStorage`.**
 > `bffToken` — a JS-readable, opaque `bff_` session bearer that used to be
@@ -524,7 +524,7 @@ flowchart TD
   subgraph shipped["Shipped (on main)"]
     remote["THIS remote — MATRIX_ROUTES<br/>SessionService role tiers + matrix_domainlocked<br/>(cross-domain invite / force-local gating)"]
     gw["hugmesh-fe-gateway<br/>serves /social/matrix · proxies /bff/** · bff_ → JWT swap"]
-    hs["Matrix homeserver (Synapse)<br/>OIDC SSO with Casdoor"]
+    hs["Matrix homeserver (tuwunel)"]
     userbff["user-bff (/bff/user)<br/>native-login session custody · self-blocks · AI-cloak media proxy<br/>Matrix CS-API hsproxy (the ONLY homeserver path)"]
     poison["AI-cloak poisoner<br/>(optional, heavy-tier)"]
     modbff["mod-bff (/bff/mod)<br/>moderation queue · server-wide block"]
