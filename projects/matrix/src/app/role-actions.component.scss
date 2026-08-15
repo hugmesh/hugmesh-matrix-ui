@@ -57,13 +57,15 @@
 
   &.status {
     background: rgba(t.$pastel-mint, 0.12);
-    border: 1px solid rgba(var(--hug-success), 0.4);
+    // -rgb twin, not the hex token: rgba() takes channels, and composing the hex
+    // silently voided this border. Literal fallback covers an un-themed build.
+    border: 1px solid rgba(var(--hug-success-rgb, 76,175,80), 0.4);
     color: var(--hug-success);
   }
 
   &.error {
     background: rgba(t.$pastel-rose, 0.12);
-    border: 1px solid rgba(var(--hug-error), 0.4);
+    border: 1px solid rgba(var(--hug-error-rgb, 255,107,107), 0.4);
     color: var(--hug-error);
   }
 }

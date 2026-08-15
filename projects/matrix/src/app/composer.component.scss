@@ -71,7 +71,10 @@
 
   &.is-on {
     color: var(--hug-success);
-    border-color: rgba(var(--hug-success), 0.5);
+    // --hug-success is a HEX; rgba() needs channels, so composing the hex token here
+    // made the browser drop the whole declaration. The theme emits the -rgb twin for
+    // exactly this; the literal fallback keeps the border on an un-themed build.
+    border-color: rgba(var(--hug-success-rgb, 76,175,80), 0.5);
     background: rgba(t.$pastel-mint, 0.12);
   }
 
@@ -204,13 +207,13 @@
   &.is-applied {
     color: var(--hug-success);
     background: rgba(t.$pastel-mint, 0.14);
-    border: 1px solid rgba(var(--hug-success), 0.4);
+    border: 1px solid rgba(var(--hug-success-rgb, 76,175,80), 0.4);
   }
 
   &.is-degraded {
     color: var(--hug-error);
     background: rgba(t.$pastel-rose, 0.14);
-    border: 1px solid rgba(var(--hug-error), 0.4);
+    border: 1px solid rgba(var(--hug-error-rgb, 255,107,107), 0.4);
   }
 
   &.is-pending {
