@@ -30,6 +30,16 @@
       [roomIdInput]="room.roomId"
       [syncRoom]="currentSync"></hug-room-view>
 
+    <!-- MEMBERS as a persistent third pane, only where there is genuinely spare width.
+         The message bubble is already capped at 46rem, so on a wide desktop everything
+         right of the timeline was empty. Gated in TypeScript rather than hidden with CSS:
+         this pane FETCHES the member list, and a phone should not pay for a pane it never
+         sees. The /rooms/:rid/members route still works unchanged for narrow screens. -->
+    <aside *ngIf="showMembersPane() && current() as room" class="members-pane"
+           data-testid="members-pane" aria-label="Room members">
+      <hug-member-list [roomIdInput]="room.roomId"></hug-member-list>
+    </aside>
+
     <p *ngIf="!current()" class="empty" role="status">Select a room to start chatting.</p>
   </div>
 </section>

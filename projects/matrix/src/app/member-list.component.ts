@@ -1,4 +1,4 @@
-import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { Component, Input, OnChanges, OnDestroy, OnInit, SimpleChanges, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
@@ -21,12 +21,18 @@ import { mountRoute } from './mount-route';
   templateUrl: './member-list.component.html',
   styleUrl: './member-list.component.scss',
 })
-export class MemberListComponent implements OnInit, OnDestroy {
+export class MemberListComponent implements OnInit, OnDestroy, OnChanges {
   /** This remote's mount point — in-app links resolve against it
    *  (see mount-route.ts: absolute links bounce out of the remote). */
   readonly mount = mountRoute();
   private readonly matrix = inject(MatrixService);
   private readonly route = inject(ActivatedRoute);
+
+  /** When EMBEDDED as a pane (rather than reached as its own route), the shell passes
+   *  the room id directly. Mirrors room-view's roomIdInput so both panes are driven the
+   *  same way; without it this component only works as a route, and a persistent
+   *  members pane beside the timeline would be impossible. */
+  @Input() roomIdInput: string | null = null;
 
   readonly roomId = signal<string | null>(null);
   readonly members = signal<RoomMember[]>([]);
@@ -42,10 +48,23 @@ export class MemberListComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     void this.matrix.whoami().then((id) => this.me.set(id));
     this.sub = this.route.paramMap.subscribe(async (pm) => {
-      const rid = pm.get('roomId');
+      // The embedded id wins: when the shell drives this pane the URL still points at
+      // the ROOM, not at its members, so the param is absent and reading it first would
+      // blank the pane on every navigation.
+      const rid = this.roomIdInput ?? pm.get('roomId');
       this.roomId.set(rid);
       if (rid) await this.reload(rid);
     });
+  }
+
+  /** Re-load when the shell switches rooms. The paramMap subscription above does not
+   *  fire for an embedded pane, because the room id arrives as an INPUT rather than in
+   *  the URL — without this the pane would keep showing the first room's members. */
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['roomIdInput'] && this.roomIdInput) {
+      this.roomId.set(this.roomIdInput);
+      void this.reload(this.roomIdInput);
+    }
   }
 
   ngOnDestroy(): void {

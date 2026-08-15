@@ -9,4 +9,8 @@
 .topbar{display:flex;align-items:baseline;gap:16px;padding:6px 8px;border-bottom:1px solid #eee}
 .nav{margin-left:auto;display:flex;gap:12px}
 .shell{display:flex;flex:1;min-height:0}
+// The members pane is the third column on wide viewports. It is `flex:none` with its own
+// clamp so the TIMELINE stays the element that absorbs leftover width — the timeline is
+// the content, the panes are context.
+.members-pane{width:clamp(200px, 18vw, 320px);flex:none;border-left:1px solid #eee;overflow:auto;min-height:0}
 .empty{flex:1;display:flex;align-items:center;justify-content:center;color:#999}

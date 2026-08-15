@@ -8,6 +8,8 @@ import { ChatThemeRootDirective } from './theme/chat-theme-root.directive';
 import { mountRoute } from './mount-route';
 import { ClientConnectBannerComponent } from './client-connect/client-connect-banner.component';
 import { VIEW_RELOAD_EVENT } from './shell-events';
+import { MemberListComponent } from './member-list.component';
+import { wideViewport } from './wide-viewport';
 
 /**
  * Standalone Matrix chat shell. Federated into the hugmesh.net host and
@@ -24,7 +26,8 @@ import { VIEW_RELOAD_EVENT } from './shell-events';
 @Component({
   selector: 'hug-matrix-chat',
   standalone: true,
-  imports: [CommonModule, RouterLink, RoomListComponent, RoomViewComponent, ClientConnectBannerComponent],
+  imports: [CommonModule, RouterLink, RoomListComponent, RoomViewComponent, ClientConnectBannerComponent,
+    MemberListComponent],
   // The shell host doubles as a chat-theme root: ChatThemeService stamps the
   // user's data-matrix-*/--hugm-chat-* theming here (never on <body>), scoped
   // by the :host rules this component's stylesheet includes.
@@ -33,6 +36,9 @@ import { VIEW_RELOAD_EVENT } from './shell-events';
   styleUrl: './matrix-chat.component.scss',
 })
 export class MatrixChatComponent implements OnInit, OnDestroy {
+  /** Whether there is spare width for the members pane beside list + timeline. */
+  readonly showMembersPane = wideViewport();
+
   /** This remote's mount point — in-app links resolve against it
    *  (see mount-route.ts: absolute links bounce out of the remote). */
   readonly mount = mountRoute();

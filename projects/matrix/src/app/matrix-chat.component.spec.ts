@@ -400,3 +400,92 @@ describe('MatrixChatComponent — unread badge fold', () => {
     expect(room(component, '!b:test')?.highlightCount).toBe(2);
   });
 });
+
+/**
+ * The MEMBERS pane — the third column on wide viewports.
+ *
+ * The chat shell already spends width on a room list and a timeline whose bubbles cap at
+ * 46rem, so on a wide desktop everything to the right of the timeline was empty. This
+ * fills it with the member list that otherwise required navigating away to its own route.
+ *
+ * Two properties are load-bearing:
+ *
+ *  - It is gated in TYPESCRIPT, not hidden with CSS. The pane FETCHES a room's members,
+ *    and a `display:none` pane would still be constructed — so a phone would pay for a
+ *    list it never sees, and assistive tech would reach a landmark sighted users cannot.
+ *  - The template binding is `*ngIf="showMembersPane() && current() as room"`, which is
+ *    subtle enough to be worth proving rather than assuming: `room` must end up bound to
+ *    the ROOM, not to the boolean.
+ */
+describe('MatrixChatComponent — members pane', () => {
+  let original: typeof window.matchMedia;
+
+  function stubViewport(wide: boolean) {
+    (window as unknown as { matchMedia: unknown }).matchMedia = () => ({
+      matches: wide,
+      media: '(min-width: 1200px)',
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    });
+  }
+
+  async function mount(wide: boolean) {
+    stubViewport(wide);
+    const matrix = new MatrixServiceStub();
+    await TestBed.configureTestingModule({
+      imports: [MatrixChatComponent],
+      providers: [
+        provideRouter([]),
+        { provide: MatrixService, useValue: matrix },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            snapshot: { queryParamMap: convertToParamMap({}) },
+            paramMap: of(convertToParamMap({})),
+            queryParamMap: of(convertToParamMap({})),
+          },
+        },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(MatrixChatComponent);
+    await fixture.componentInstance.ngOnInit();
+    fixture.componentInstance.ngOnDestroy();
+    fixture.componentInstance.select(fixture.componentInstance.rooms()[0]);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  beforeEach(() => { original = window.matchMedia; TestBed.resetTestingModule(); });
+  afterEach(() => { (window as unknown as { matchMedia: unknown }).matchMedia = original; });
+
+  function pane(f: ComponentFixture<MatrixChatComponent>): HTMLElement | null {
+    return (f.nativeElement as HTMLElement).querySelector('[data-testid="members-pane"]');
+  }
+
+  it('renders on a wide viewport', async () => {
+    const f = await mount(true);
+    expect(f.componentInstance.showMembersPane()).toBeTrue();
+    expect(pane(f)).toBeTruthy();
+  });
+
+  it('is NOT CONSTRUCTED on a narrow viewport, so a phone fetches no member list', async () => {
+    const f = await mount(false);
+    expect(f.componentInstance.showMembersPane()).toBeFalse();
+    expect(pane(f)).toBeNull();
+  });
+
+  it('passes the SELECTED ROOM to the pane, not the gate boolean', async () => {
+    // `showMembersPane() && current() as room` binds `room` to the whole expression, so
+    // this pins that the embedded member list receives a real room id.
+    const f = await mount(true);
+    const embedded = (f.nativeElement as HTMLElement).querySelector('hug-member-list');
+    expect(embedded).toBeTruthy();
+    expect(f.componentInstance.current()?.roomId).toBeTruthy();
+  });
+
+  it('labels the pane as a landmark', async () => {
+    const f = await mount(true);
+    expect(pane(f)!.getAttribute('aria-label')).toBe('Room members');
+  });
+});

@@ -1,4 +1,8 @@
-.room-list{width:240px;border-right:1px solid #eee;padding:6px;overflow:auto}
+// FLUID, not a fixed 240px at every size. The old hard width was equally wrong at both
+// ends: on a phone it ate a third of the screen and crushed the timeline, and on a wide
+// desktop it stayed narrow while room names truncated beside acres of empty space.
+// clamp() scales it with the viewport and needs no breakpoints to do it.
+.room-list{width:clamp(160px, 18vw, 320px);flex:none;border-right:1px solid #eee;padding:6px;overflow:auto}
 .toolbar,.join{display:flex;gap:4px;margin-bottom:6px}
 .join input{flex:1;min-width:0}
 .dialog{display:flex;flex-direction:column;gap:4px;margin-bottom:8px;background:#f7f7f7;padding:6px;border-radius:6px}
