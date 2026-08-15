@@ -98,7 +98,11 @@ describe('RoomSettingsComponent', () => {
     const nav = spyOn(router, 'navigate').and.resolveTo(true);
     await component.leave();
     expect(matrix.leaveRoom).toHaveBeenCalledWith('!r:test');
-    expect(nav).toHaveBeenCalledWith(['/rooms']);
+    // Mount-RELATIVE since fix/mount-relative-navigation (1337ed2): under the
+    // host shell an absolute ['/rooms'] resolves against the SHELL's router and
+    // bounces the user out of Matrix to /user. The spec was never updated with
+    // the code, so main shipped red.
+    expect(nav).toHaveBeenCalledWith(['rooms'], jasmine.objectContaining({ relativeTo: jasmine.anything() }));
   });
 
   // ───────── ANNOUNCED-FAILURE HONESTY: never claim "Invited" on a rejection ─────────

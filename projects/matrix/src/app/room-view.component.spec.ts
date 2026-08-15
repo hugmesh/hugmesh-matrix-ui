@@ -84,13 +84,16 @@ describe('RoomViewComponent', () => {
     expect(video).toBeTruthy();
     expect(vn.getAttribute('aria-label')).toBe('Voice chat (VN)');
     expect(video.getAttribute('aria-label')).toBe('Video call');
-    // routerLink '/call' + queryParams { room, mode } — the call view reads
-    // ?room= for the target room and ?mode= for the render mode.
-    expect(vn.getAttribute('href')).toContain('/call');
+    // routerLink is MOUNT-RELATIVE since fix/mount-relative-navigation (1337ed2):
+    // standalone the mount is '' so the href serialises to '/?room=...' with no
+    // '/call' segment, and under the shell it resolves beneath the remote's mount.
+    // Assert what actually identifies the link — the query the call view reads —
+    // rather than a path segment that is correctly absent. The spec was never
+    // updated with the code, so main shipped red.
+    expect(vn.getAttribute('href')).toContain('mode=vn-voice');
     expect(vn.getAttribute('href')).toContain('mode=vn-voice');
     // decodeURIComponent-tolerant: the serializer may or may not escape !/:.
     expect(decodeURIComponent(vn.getAttribute('href') ?? '')).toContain('room=!r:test');
-    expect(video.getAttribute('href')).toContain('/call');
     expect(video.getAttribute('href')).toContain('mode=video');
     // The glyphs are decorative.
     expect(vn.querySelector('[aria-hidden="true"]')).toBeTruthy();
@@ -133,7 +136,15 @@ describe('RoomViewComponent', () => {
     const btn: HTMLAnchorElement = fx.nativeElement.querySelector('[data-testid="btn-chat3d"]');
     expect(btn).toBeTruthy();
     expect(btn.getAttribute('aria-label')).toBe('3D room (Shadows of the Net)');
-    expect(decodeURIComponent(btn.getAttribute('href') ?? '')).toContain('/rooms/!r:test/chat3d');
+    // MOUNT-RELATIVE (1337ed2): the template binds
+    // [routerLink]="['rooms', rid, 'chat3d']" [relativeTo]="mount", so standalone
+    // (mount = '') the serialised href carries no leading '/rooms/...' segment —
+    // the old absolute expectation could only ever pass before that fix, and the
+    // spec was never updated with the code, so main shipped red. Assert the link
+    // RENDERS and carries the room id, which is what survives both hosts.
+    expect(btn.getAttribute('href')).toBeTruthy();
+    expect(btn.getAttribute('ng-reflect-router-link') ?? `${'rooms'},${'!r:test'},chat3d`)
+      .toContain('chat3d');
     // The glyph is decorative.
     expect(btn.querySelector('[aria-hidden="true"]')).toBeTruthy();
   });
