@@ -8,7 +8,7 @@
 <section *ngIf="!entered()" class="chat3d-join" data-testid="chat3d-join" aria-label="Join the 3D room">
   <header>
     <h3>Shadows of the Net — 3D room</h3>
-    <a *ngIf="roomId() as rid" [routerLink]="['/rooms', rid]" data-testid="btn-chat3d-join-back">
+    <a *ngIf="roomId() as rid" [routerLink]="['rooms', rid]" [relativeTo]="mount" data-testid="btn-chat3d-join-back">
       <span aria-hidden="true">←</span> Back to room
     </a>
   </header>

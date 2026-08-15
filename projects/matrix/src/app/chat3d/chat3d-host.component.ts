@@ -21,6 +21,7 @@ import { blendshapesToBase64 } from './av-channel';
 import { RoomMediaPanelComponent } from './room-media-panel.component';
 import { Chat3dStageService } from './chat3d-stage.service';
 import { DEFAULT_EXPRESSION, Expression, expressionForEvent } from '../vn/expression';
+import { mountRoute } from '../mount-route';
 
 /** Cadence of the room-state poll feeding the game (matches the 1Hz
  *  matrix-call pump precedent — room state is SLOW config, not motion). */
@@ -132,6 +133,10 @@ export class Chat3dHostComponent implements OnInit, OnDestroy {
   private readonly gamesBase = inject(GAMES_BASE_URL);
   readonly mesh = inject(MeshCallService);
   readonly faceTrack = inject(FaceTrackService);
+
+  /** This remote's mount point — in-app links resolve against it
+   *  (see mount-route.ts: absolute links bounce out of the remote). */
+  readonly mount = mountRoute();
 
   /** The Matrix room this 3D view belongs to. */
   @Input({ required: true }) roomId!: string;

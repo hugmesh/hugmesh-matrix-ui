@@ -2,6 +2,7 @@ import { Injectable } from '@angular/core';
 import { PartManifest, TintRegion } from '../models/vn-manifest';
 import { VnCharacter } from '../models/vn-character';
 import { sanitizeSvgClient } from '../util/svg-sanitize.client';
+import { resolveAssetsBase } from '../assets-base';
 
 /**
  * The SVG-DOM compositor (v2). Composes a character's chosen part SVGs into ONE
@@ -50,7 +51,9 @@ const SAFE_HEX = /^#[0-9a-fA-F]{3,8}$/;
 
 @Injectable({ providedIn: 'root' })
 export class SvgRigService {
-  private readonly assetsBase = 'assets/vn/';
+  /** Absolute base URL for this remote's VN assets — see {@link resolveAssetsBase}
+   *  for why a bare `'assets/vn/'` 404s under the host shell. */
+  private readonly assetsBase = resolveAssetsBase();
   private readonly cache = new Map<string, string>();
 
   /**

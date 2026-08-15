@@ -11,6 +11,7 @@ import {
   CHAT3D_SCENE_TYPE, Chat3dPlacement, Chat3dSceneService, MAX_PLACEMENT_LABEL_LENGTH,
   PlacementKind, STAGE_SURFACE_ID,
 } from './chat3d-scene.service';
+import { mountRoute } from '../mount-route';
 
 /** The scene's placeable surfaces, in display order (6 table + 4 screen + stage). */
 export const PANEL_SURFACES: readonly string[] = [
@@ -71,6 +72,10 @@ export interface MediaPanelItem {
 export class RoomMediaPanelComponent implements OnInit, OnDestroy {
   private readonly matrix = inject(MatrixService);
   private readonly scene = inject(Chat3dSceneService);
+
+  /** This remote's mount point — in-app links resolve against it
+   *  (see mount-route.ts: absolute links bounce out of the remote). */
+  readonly mount = mountRoute();
 
   /** The Matrix room whose media/threads/pins are listed. */
   @Input({ required: true }) roomId!: string;

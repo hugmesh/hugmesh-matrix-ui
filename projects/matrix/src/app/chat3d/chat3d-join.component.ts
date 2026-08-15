@@ -9,6 +9,7 @@ import { Chat3dAvatarMode, Chat3dAvatarState } from './chat3d-avatar.service';
 import { ActiveForgeCharacter, CharacterForgeBffService } from './character-forge-bff.service';
 import { randomChar3dConfig } from './char3d-config';
 import { Chat3dHostComponent } from './chat3d-host.component';
+import { mountRoute } from '../mount-route';
 
 /**
  * The 3D-room JOIN MENU at `rooms/:roomId/chat3d` — the doorway between a
@@ -37,6 +38,10 @@ export class Chat3dJoinComponent implements OnInit, OnDestroy {
   private readonly chat3d = inject(Chat3dStateService);
   private readonly forge = inject(CharacterForgeBffService);
   private readonly packs = inject(CharacterPackService);
+
+  /** This remote's mount point — in-app links resolve against it
+   *  (see mount-route.ts: absolute links bounce out of the remote). */
+  readonly mount = mountRoute();
 
   readonly roomId = signal<string | null>(null);
   /** The room's parsed chat3d state (null = off/unset/unreadable). */

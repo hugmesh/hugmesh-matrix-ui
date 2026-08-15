@@ -40,7 +40,7 @@
       <li *ngFor="let item of section.items" [attr.data-testid]="'media-item-' + item.eventId">
         <span class="kind" aria-hidden="true">{{ item.kind }}</span>
         <span class="label" [title]="item.label">{{ item.label }}</span>
-        <a *ngIf="item.kind === 'thread'" [routerLink]="['/rooms', roomId, 'thread', item.eventId]"
+        <a *ngIf="item.kind === 'thread'" [routerLink]="['rooms', roomId, 'thread', item.eventId]" [relativeTo]="mount"
            [attr.data-testid]="'media-item-thread-link-' + item.eventId">View thread</a>
         <button *ngIf="item.mxcUri" type="button"
                 [attr.data-testid]="'btn-media-open-' + item.eventId"

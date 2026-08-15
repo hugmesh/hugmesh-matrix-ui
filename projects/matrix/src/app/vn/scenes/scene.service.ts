@@ -1,4 +1,5 @@
 import { Injectable, signal } from '@angular/core';
+import { resolveAssetsBase } from '../assets-base';
 
 /**
  * LIMIT MAX_MANIFEST_ENTRIES=64 (per list): most scenes/props parsed from the
@@ -41,10 +42,11 @@ export interface VnScenesManifest {
 
 /**
  * Loads + caches the VN scene/prop manifest (`assets/vn/scenes/scenes.json`)
- * and resolves scene/prop asset URLs. Same relative-assets-base convention as
- * {@link SvgRigService} (`assets/vn/`): the SVGs are static, pack-authored
- * flat-vector art served with the app — NOT user content — so a plain relative
- * URL in an `<img src>` is safe (no mxc, no auth, no sanitize pass needed).
+ * and resolves scene/prop asset URLs. Same MODULE-ANCHORED assets-base
+ * convention as {@link SvgRigService} (`assets/vn/`, see {@link
+ * resolveAssetsBase}): the SVGs are static, pack-authored flat-vector art served
+ * with the app — NOT user content — so putting the resolved URL straight into an
+ * `<img src>` is safe (no mxc, no auth, no sanitize pass needed).
  *
  * FAIL-SOFT by construction: a fetch/parse error resolves to EMPTY scene/prop
  * lists (and unknown ids resolve to `null` URLs) so a missing manifest renders
@@ -53,8 +55,11 @@ export interface VnScenesManifest {
  */
 @Injectable({ providedIn: 'root' })
 export class SceneService {
-  /** Relative assets base — same convention as SvgRigService's `assets/vn/`. */
-  private readonly assetsBase = 'assets/vn/scenes/';
+  /** ABSOLUTE assets base — same convention as SvgRigService's `assets/vn/`,
+   *  anchored on this module's chunk URL (see {@link resolveAssetsBase}): a bare
+   *  `'assets/vn/scenes/'` resolves against the SHELL document under federation
+   *  and 404s at the shell root. */
+  private readonly assetsBase = resolveAssetsBase('assets/vn/scenes/');
 
   /** In-flight/settled manifest load (cleared on failure so a retry can run). */
   private loadPromise: Promise<void> | null = null;

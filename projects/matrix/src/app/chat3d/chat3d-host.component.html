@@ -1,6 +1,6 @@
 <section class="chat3d-host" data-testid="chat3d-host" aria-label="3D chat room">
   <header class="chat3d-bar">
-    <a [routerLink]="['/rooms', roomId]" data-testid="btn-chat3d-back">
+    <a [routerLink]="['rooms', roomId]" [relativeTo]="mount" data-testid="btn-chat3d-back">
       <span aria-hidden="true">←</span> Back to room
     </a>
     <span *ngIf="!ready()" class="loading" data-testid="chat3d-loading" role="status" aria-live="polite">

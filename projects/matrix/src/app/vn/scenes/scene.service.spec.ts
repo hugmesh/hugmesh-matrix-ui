@@ -1,4 +1,14 @@
 import { SceneService } from './scene.service';
+import { resolveAssetsBase } from '../assets-base';
+
+/** The MODULE-anchored base the service resolves against (see assets-base.ts).
+ *  Asserting against this — rather than the old bare `'assets/vn/scenes/'` —
+ *  is what pins the fix: the expectation is an absolute URL under the remote's
+ *  own mount in every host. */
+const SCENES_BASE = resolveAssetsBase('assets/vn/scenes/');
+
+/** Any absolute URL (has a scheme) — see assets-base.spec.ts. */
+const ABSOLUTE_URL = /^[a-z][a-z0-9+.-]*:\/\//i;
 
 const MANIFEST = {
   schemaVersion: 1,
@@ -32,7 +42,13 @@ describe('SceneService', () => {
 
     await service.load();
 
-    expect(fetchSpy).toHaveBeenCalledWith('assets/vn/scenes/scenes.json', jasmine.objectContaining({ cache: 'force-cache' }));
+    expect(fetchSpy).toHaveBeenCalledWith(`${SCENES_BASE}scenes.json`, jasmine.objectContaining({ cache: 'force-cache' }));
+    // Federation guard: the fetched URL must be absolute and live under the
+    // module's own directory, never the bare document-relative string that
+    // 404'd at the shell root.
+    const fetched = fetchSpy.calls.mostRecent().args[0] as string;
+    expect(fetched).toMatch(ABSOLUTE_URL);
+    expect(fetched).not.toBe('assets/vn/scenes/scenes.json');
     expect(service.scenes().map((s) => s.id)).toEqual(['vn_scene_cafe', 'vn_scene_night_city']);
     expect(service.props().map((p) => p.id)).toEqual(['vn_prop_lamp', 'vn_prop_drink']);
     expect(service.loaded()).toBeTrue();
@@ -44,10 +60,11 @@ describe('SceneService', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('resolves scene and prop URLs against the relative assets base', async () => {
+  it('resolves scene and prop URLs against the MODULE-anchored assets base', async () => {
     await service.load();
-    expect(service.sceneUrl('vn_scene_cafe')).toBe('assets/vn/scenes/vn_scene_cafe.svg');
-    expect(service.propUrl('vn_prop_drink')).toBe('assets/vn/scenes/vn_prop_drink.svg');
+    expect(service.sceneUrl('vn_scene_cafe')).toBe(`${SCENES_BASE}vn_scene_cafe.svg`);
+    expect(service.propUrl('vn_prop_drink')).toBe(`${SCENES_BASE}vn_prop_drink.svg`);
+    expect(service.sceneUrl('vn_scene_cafe')).toMatch(ABSOLUTE_URL);
   });
 
   it('unknown / null ids resolve to null (fail-soft)', async () => {
