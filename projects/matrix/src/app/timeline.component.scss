@@ -1,11 +1,26 @@
+@use '../styles/tokens' as t;
+
 /* Per-user chat theming: every var(--hugm-chat-*, fallback) below inherits from
  * the nearest theme root (see theme/chat-theme.service.ts). The fallbacks are
  * the stock values, so with NO theme set this renders byte-identically to the
  * pre-theming stylesheet. */
 .timeline{display:flex;flex-direction:column;min-height:0;font-family:var(--hugm-chat-font-family, inherit)}
 .log{list-style:none;margin:0;padding:0;overflow:auto;flex:1;background-color:var(--hugm-chat-bg, transparent);background-image:var(--hugm-chat-bg-image, none);background-size:var(--hugm-chat-bg-size, auto)}
-.paginate{align-self:center;margin:4px;font-size:12px}
+/* Same "don't ship a raw UA button" rule the action toolbar below follows:
+ * this used to be a bare grey <button> in the middle of a dark chat log. */
+.paginate{
+  align-self:center;margin:4px;font-size:12px;padding:4px 10px;line-height:1.4;
+  color:t.$offwhite;background:rgba(t.$neon,0.10);
+  border:1px solid rgba(t.$neon,t.$opacity-border);border-radius:t.$radius-sm;cursor:pointer;
+  transition:background-color t.$transition-base,border-color t.$transition-base,color t.$transition-base;
+}
+/* Hover/focus changes COLOUR only — never padding/border-width — so the
+ * control cannot resize under the pointer (see .actions below). */
+.paginate:hover,.paginate:focus-visible{background:rgba(t.$neon,0.22);border-color:rgba(t.$neon,0.5);color:t.$neon-bright}
 .day-separator{text-align:center;color:#888;font-size:12px;margin:6px 0}
+/* Row = avatar | bubble | action toolbar. The toolbar is the third column and
+ * is ALWAYS laid out (see .actions), so the row's geometry never depends on
+ * whether the pointer is over it. */
 .event-body{display:flex;gap:var(--hugm-chat-event-gap, 8px);padding:var(--hugm-chat-event-pad, 4px 8px)}
 .avatar{width:28px;height:28px;border-radius:50%;background:#ddd center/cover no-repeat;flex:none}
 /* LIMIT: bubbles cap at 46rem and long unbroken tokens wrap (overflow-wrap) —
@@ -26,9 +41,61 @@
 .pill{font-size:12px;border:1px solid #ccc;border-radius:12px;background:#f4f4f4;cursor:pointer;padding:0 6px}
 .pill.mine{background:#d8e8ff;border-color:#7aa7ff}
 .thread-summary{font-size:12px;color:#3a6df0}
-.actions{display:none;gap:4px;margin-top:2px}
-.event:hover .actions{display:flex}
-.actions button{font-size:11px}
+/* PER-MESSAGE ACTIONS — space RESERVED in every state, revealed by paint only.
+ *
+ * WHY: the previous rule paired `.actions{display:none}` with
+ * `.event:hover .actions{display:flex}` — hover toggled a LAYOUT property.
+ * Revealing the controls INSERTED a row into the message, so the hovered event
+ * grew and every message below it jumped down the page; the log visibly
+ * jittered as the pointer travelled across it. Measured on the built remote
+ * before this change: the hovered row went 43px -> 65px and its three following
+ * siblings each shifted down 22px.
+ *
+ * The toolbar is now the row's third flex column and is ALWAYS laid out, pushed
+ * to the end of the row by `margin-left:auto`. Hover only fades it in, so a
+ * message's geometry is identical whether the pointer is over it or not. It is
+ * deliberately NOT an absolute overlay: the timeline column is content-width,
+ * so an overlay pinned to the row's right edge would sit on top of the longest
+ * message's own text. A reserved column can never occlude a message.
+ *
+ * WHY opacity and not visibility/display: opacity leaves the buttons in the
+ * a11y tree AND focusable, so `:focus-within` reveals them for keyboard users —
+ * under `display:none` the react/reply/thread/edit/delete controls were
+ * unreachable without a mouse. They can never be clicked while invisible: the
+ * pointer cannot land on a button inside .event without .event:hover matching
+ * first. Any future reveal must keep to paint-only properties. */
+.actions{
+  display:flex;gap:4px;align-items:flex-start;align-self:flex-start;
+  flex:none;margin-left:auto;
+  opacity:0;transition:opacity t.$transition-base;
+}
+.event:hover .actions,.event:focus-within .actions{opacity:1}
+
+/* Icon buttons: the glyph is decorative (aria-hidden in the template) and the
+ * ACCESSIBLE NAME comes from each button's own aria-label, so an icon-only
+ * control still announces what it does. Fixed 28px box >= the 24px WCAG 2.5.8
+ * target floor (the global pointer:coarse rule lifts it to 44px on touch). */
+.action-btn{
+  display:inline-flex;align-items:center;justify-content:center;flex:none;
+  width:28px;height:28px;padding:0;
+  font-size:14px;line-height:1;
+  color:t.$offwhite;background:rgba(t.$neon,0.10);
+  border:1px solid rgba(t.$neon,t.$opacity-border);border-radius:t.$radius-sm;cursor:pointer;
+  transition:background-color t.$transition-base,border-color t.$transition-base,color t.$transition-base;
+}
+/* Colour-only hover/focus: never padding, border-WIDTH or font-size, so moving
+ * between buttons cannot resize the toolbar either. */
+.action-btn:hover,.action-btn:focus-visible{background:rgba(t.$neon,0.22);border-color:rgba(t.$neon,0.5);color:t.$neon-bright}
+.action-btn.danger:hover,.action-btn.danger:focus-visible{
+  background:rgba(255,107,107,0.22);border-color:var(--hug-error, #ff6b6b);color:var(--hug-error, #ff6b6b);
+}
+
+/* Touch / no-hover pointers have no hover state to reveal the toolbar with, so
+ * it stays painted. Nothing about the LAYOUT changes here — the space is
+ * reserved either way — so this can never reintroduce the jitter. */
+@media (hover: none){
+  .actions{opacity:1}
+}
 .event.redacted .text{display:none}
 .read-receipts{display:flex;justify-content:flex-end;gap:2px;margin-top:2px;flex-wrap:wrap}
 .receipt{width:16px;height:16px;border-radius:50%;background:#cfd8e6 center/cover no-repeat;border:1px solid #fff;box-shadow:0 0 0 1px #b7c2d2;font-size:9px;line-height:14px;text-align:center;color:#33465e;flex:none}

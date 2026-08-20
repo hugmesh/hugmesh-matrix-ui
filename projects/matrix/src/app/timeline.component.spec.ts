@@ -354,8 +354,11 @@ describe('TimelineComponent', () => {
       await withEvents([msg({ sender: '@me:test' })]);
       const del = fixture.nativeElement.querySelector('[data-testid="btn-delete-$e1"]');
       expect(del).toBeTruthy();
-      // Own-message delete keeps the plain (non-moderator) announcement.
-      expect(del.getAttribute('aria-label')).toBeNull();
+      // Own-message delete keeps the plain (non-moderator) announcement. The
+      // control is icon-only, so that announcement now HAS to be an aria-label
+      // (there is no button text left to name it) — what matters is that it
+      // does not claim a moderator action against another member.
+      expect(del.getAttribute('aria-label')).toBe('Delete your message');
     });
 
     it('redacts via MatrixService and swaps the body for the redacted placeholder', async () => {

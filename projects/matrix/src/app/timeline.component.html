@@ -93,29 +93,47 @@
                   [style.background-image]="c.avatarBg">{{ c.avatarBg ? '' : c.initial }}</span>
           </div>
 
-          <div class="actions" role="group"
-               aria-describedby="timeline-actions-help"
-               [attr.aria-label]="'Actions for message from ' + senderAriaName(row.event)">
-            <button type="button" [attr.data-testid]="'btn-react-' + row.event.eventId"
-                    [attr.aria-expanded]="pickerFor() === row.event.eventId"
-                    (click)="openPicker(row.event.eventId)">React</button>
-            <button type="button" [attr.data-testid]="'btn-reply-' + row.event.eventId" (click)="reply.emit(row.event)">Reply</button>
-            <button type="button" [attr.data-testid]="'btn-thread-' + row.event.eventId" (click)="thread.emit(row.event)">Thread</button>
-            <button *ngIf="isMine(row.event)" type="button" [attr.data-testid]="'btn-edit-' + row.event.eventId" (click)="edit.emit(row.event)">Edit</button>
-            <!-- Delete (redact) is OWNERSHIP + ROLE gated: the author always, a
-                 MOD/ADMIN tier on anyone's message (canRedact). The homeserver
-                 still enforces the redact power level — this UI gate only decides
-                 who is OFFERED the control. -->
-            <button *ngIf="canRedact(row.event)" type="button" [attr.data-testid]="'btn-delete-' + row.event.eventId"
-                    [attr.aria-label]="isMine(row.event) ? null : 'Delete (moderator) message from ' + senderAriaName(row.event)"
-                    (click)="del(row.event)">Delete</button>
-          </div>
-
           <hug-reaction-picker *ngIf="pickerFor() === row.event.eventId"
             [roomId]="roomId" [targetEventId]="row.event.eventId"
             [myReactions]="myReactionMap(row.event)"
             (reacted)="onReacted(row.event.eventId)"
             (dismissed)="dismissPicker(row.event.eventId)"></hug-reaction-picker>
+        </div>
+
+        <!-- ICON action toolbar — a SIBLING of the bubble, not part of it, so it
+             can hold its own reserved column at the end of the row. Its space is
+             reserved in EVERY state (see .actions in the scss); hover only fades
+             it in, so the message can never resize under the pointer.
+             Every control is icon-only, so the glyph is aria-hidden decoration
+             and the ACCESSIBLE NAME is carried by each button's own aria-label
+             (`title` only adds the sighted tooltip) — the same idiom as the
+             room-view header's icon links. -->
+        <div class="actions" role="group"
+             aria-describedby="timeline-actions-help"
+             [attr.aria-label]="'Actions for message from ' + senderAriaName(row.event)">
+          <button type="button" class="action-btn" [attr.data-testid]="'btn-react-' + row.event.eventId"
+                  [attr.aria-expanded]="pickerFor() === row.event.eventId"
+                  [attr.aria-label]="'React to message from ' + senderAriaName(row.event)"
+                  title="React" (click)="openPicker(row.event.eventId)"><span aria-hidden="true">🙂</span></button>
+          <button type="button" class="action-btn" [attr.data-testid]="'btn-reply-' + row.event.eventId"
+                  [attr.aria-label]="'Reply to message from ' + senderAriaName(row.event)"
+                  title="Reply" (click)="reply.emit(row.event)"><span aria-hidden="true">↩️</span></button>
+          <button type="button" class="action-btn" [attr.data-testid]="'btn-thread-' + row.event.eventId"
+                  [attr.aria-label]="'Start a thread on message from ' + senderAriaName(row.event)"
+                  title="Thread" (click)="thread.emit(row.event)"><span aria-hidden="true">🧵</span></button>
+          <button *ngIf="isMine(row.event)" type="button" class="action-btn"
+                  [attr.data-testid]="'btn-edit-' + row.event.eventId"
+                  aria-label="Edit your message"
+                  title="Edit" (click)="edit.emit(row.event)"><span aria-hidden="true">✏️</span></button>
+          <!-- Delete (redact) is OWNERSHIP + ROLE gated: the author always, a
+               MOD/ADMIN tier on anyone's message (canRedact). The homeserver
+               still enforces the redact power level — this UI gate only decides
+               who is OFFERED the control. The label still distinguishes the
+               self-redact from the moderator redact of someone else's message. -->
+          <button *ngIf="canRedact(row.event)" type="button" class="action-btn danger"
+                  [attr.data-testid]="'btn-delete-' + row.event.eventId"
+                  [attr.aria-label]="isMine(row.event) ? 'Delete your message' : 'Delete (moderator) message from ' + senderAriaName(row.event)"
+                  title="Delete" (click)="del(row.event)"><span aria-hidden="true">🗑️</span></button>
         </div>
       </div>
     </li>
