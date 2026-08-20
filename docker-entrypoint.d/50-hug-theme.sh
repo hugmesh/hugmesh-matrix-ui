@@ -1,7 +1,7 @@
 #!/bin/sh
-# 50-snap-theme.sh — runtime login THEME injection (sibling of 40-snap-config.sh).
+# 50-hug-theme.sh — runtime login THEME injection (sibling of 40-snap-config.sh).
 #
-# Writes snap-theme.css AND hug-theme.css (see DUAL SERVE below) from the theme
+# Writes hug-theme.css AND snap-theme.css (see DUAL SERVE below) from the theme
 # env at container start; index.html <link>s one of them, and its
 # ":root:root { --hug-*: ... }" block beats the compiled :root fallbacks in
 # styles.css by specificity. Rebrand = update the env (ConfigMap) + restart the
@@ -18,7 +18,7 @@
 # compiled :root literals render the shipped default brand, byte-identically.
 set -eu
 
-# ── RENAME PHASE 1: DUAL READ + DUAL SERVE ────────────────────────────────────
+# ── RENAME PHASE 3: IN-IMAGE NAMES FLIPPED (dual read + dual serve KEPT) ──────
 # The fleet is renaming SNAP_* -> HUG_*. This contract crosses a PROCESS
 # boundary (compose / the cluster ConfigMap sets the env; this container reads
 # it), so the two halves cannot flip in one commit. A one-sided flip is the
@@ -30,12 +30,21 @@ set -eu
 # So this side accepts BOTH spellings, new name winning when set:
 #   HUG_THEME_CSS  else SNAP_THEME_CSS  -> the token text (verbatim)
 #   HUG_THEME_OUT  else SNAP_THEME_OUT  -> where to write it
-# and it writes the SAME bytes under BOTH filenames (snap-theme.css AND
-# hug-theme.css), so an index.html from either era resolves. Producers are
-# unchanged by this commit — that is the point: after it lands, whichever
-# spelling the producer switches to already works.
+# and it writes the SAME bytes under BOTH filenames (hug-theme.css AND
+# snap-theme.css), so an index.html from either era resolves.
+#
+# WHAT PHASE 3 CHANGED, and why it is safe where the env flip is not: the
+# FILE name and the URL are settled entirely INSIDE this image — this hook
+# writes it, this image's nginx.conf serves it, this image's index.html asks
+# for it, this image's Dockerfile COPYs the hook in by name. All four move in
+# one commit and ship as one layer, so there is no window in which half the
+# contract is renamed. The *_THEME_CSS env var is the opposite shape (a
+# producer outside the image sets it) and is deliberately NOT touched here.
+#
+# The dual read above therefore stays exactly as it was. hug-theme.css is now
+# the PRIMARY output and snap-theme.css the legacy twin; nginx serves both.
 
-OUT="${HUG_THEME_OUT:-${SNAP_THEME_OUT:-/usr/share/nginx/html/snap-theme.css}}"
+OUT="${HUG_THEME_OUT:-${SNAP_THEME_OUT:-/usr/share/nginx/html/hug-theme.css}}"
 CSS="${HUG_THEME_CSS:-${SNAP_THEME_CSS:-}}"
 
 if [ -n "${HUG_THEME_CSS:-}" ]; then
@@ -66,7 +75,7 @@ if [ -n "$TWIN" ] && [ "$TWIN" != "$OUT" ]; then
 fi
 
 if [ -s "$OUT" ]; then
-  echo "50-snap-theme.sh: wrote $OUT${TWIN:+ + $TWIN} ($(wc -c < "$OUT") bytes, from $FROM)"
+  echo "50-hug-theme.sh: wrote $OUT${TWIN:+ + $TWIN} ($(wc -c < "$OUT") bytes, from $FROM)"
 else
-  echo "50-snap-theme.sh: wrote empty $OUT${TWIN:+ + $TWIN} ($FROM — shipped default brand)"
+  echo "50-hug-theme.sh: wrote empty $OUT${TWIN:+ + $TWIN} ($FROM — shipped default brand)"
 fi
