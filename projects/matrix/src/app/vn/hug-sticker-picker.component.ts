@@ -241,8 +241,9 @@ export class HugStickerPickerComponent implements AfterViewInit, OnDestroy {
       // Org ext so other clients can recover the VN expression; ignored by
       // clients that don't understand it (the sticker still renders). Canonical
       // wire prefix follows the .net domain move; events written by older
-      // builds carry `systems.hugmesh.vn` / `systems.snapdragon.vn` instead —
-      // a future READER of this field must accept all three spellings.
+      // builds carry the pre-rebrand field names instead (spelled ONLY in
+      // legacy-read.ts, LEGACY_VN_STICKER_CONTENT_FIELDS) — a future READER
+      // of this field must accept all three spellings.
       'net.hugmesh.vn': { expression: tile.shortcode },
     };
     try {

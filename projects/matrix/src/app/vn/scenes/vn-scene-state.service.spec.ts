@@ -180,8 +180,9 @@ describe('VnSceneStateService', () => {
   });
 
   it('LEGACY read-fallback: a scene saved under EITHER pre-rebrand name still parses', async () => {
-    // Pre-.net-move rooms persist systems.hugmesh.*; pre-rebrand rooms persist
-    // systems.snapdragon.*. Both are real data — and writes never touch them.
+    // Pre-.net-move rooms persist the middle generation; pre-rebrand rooms the
+    // oldest (both spelled only in legacy-read.ts). Both are real data — and
+    // writes never touch them.
     const scene = { sceneId: 'vn_scene_cafe', props: [] };
     for (const legacyType of LEGACY_VN_SCENE_STATE_TYPES) {
       matrix.getStateEvent = jasmine.createSpy('getStateEvent').and.callFake(

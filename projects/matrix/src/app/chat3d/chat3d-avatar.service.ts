@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { MatrixService, TimelineEvent } from '../matrix.service';
 import { Char3dConfig, parseChar3dConfig, sanitizeDisplayName } from './char3d-config';
+import { LEGACY_CHAT3D_AVATAR_TYPES } from '../legacy-read';
 
 /**
  * The room STATE event type carrying each participant's 3D avatar snapshot.
@@ -15,16 +16,14 @@ export const CHAT3D_AVATAR_TYPE = 'net.hugmesh.chat3d.avatar';
  * Pre-rebrand generations of {@link CHAT3D_AVATAR_TYPE}; read-fallback only —
  * never written. A member whose avatar was published under an older branding
  * (and who has not re-joined the 3D view since) still carries it under that
- * name, and BOTH old generations are real data — `systems.hugmesh.*` (every
- * post-squash build before the .net domain move) and `systems.snapdragon.*`
- * (pre-rebrand rooms). The roster read accepts all three, PER state_key, with
+ * name, and BOTH old generations are real data — spelled ONLY in
+ * `legacy-read.ts` (the consolidated legacy-read list; see there for the
+ * generation policy). The roster read accepts all three, PER state_key, with
  * the NEWEST generation that has any row for an owner winning outright —
  * including a newer RETRACT (`{}`), which must keep suppressing the stale
  * older snapshot it retired. Publish/retract stay canonical-only.
  */
-export const LEGACY_CHAT3D_AVATAR_TYPES: readonly string[] = [
-  'systems.hugmesh.chat3d.avatar', 'systems.snapdragon.chat3d.avatar',
-];
+export { LEGACY_CHAT3D_AVATAR_TYPES };
 
 /** LIMIT: serialized avatar-event content byte cap (≤8KB — a Char3DConfig is
  *  ~1-2KB; anything bigger is hostile padding, not a character). */
