@@ -189,9 +189,34 @@ domain-lock helptext, access gating, a11y) are NOT tagged and run offline.
   room-state PUT's outcome, so this is honestly provable with no homeserver;
   the cross-user round-trip of the same state event is the `@cluster` scenario
   in `vn-voice-call.feature`.
+- **`features/calls/vn-scene-moderation.feature`** — the shared scene's TRUST
+  BOUNDARY (`vn/scenes/vn-scene-moderation.ts`, applied on the receive path by
+  `getModeratedSceneState`): a below-power-level sender's scene event is
+  ignored and the last GOOD scene kept, and an authorized-but-seizing driver's
+  per-poll flip burst is coalesced to `SceneRateLimiter`'s 3-changes-per-5s
+  budget. OFFLINE (untagged) by necessity, not convenience — a homeserver that
+  ENFORCES the power level would refuse the hostile write, so route-fulfilling
+  the room state is the only way to stage the case the client must survive (a
+  mis-configured `state_default`, an older room preset, a compromised server).
+  Neither scenario sleeps: the seeded route COUNTS the state reads, so every
+  assertion waits on proven re-reads, the "ignored" half is followed by a
+  LEGITIMATE scene that does land (proving the poll path was live), and the
+  coalesce half records every background the stage ever showed with a
+  MutationObserver rather than sampling for them.
 - **`features/calls/vn-viewport.feature`** — the VN call screen and room view
   stay usable on phone/tablet viewports: no forced horizontal scroll, the
   16:9 stage letterboxes, and controls meet the 44px touch-target minimum.
+- **`features/rooms/mesh-bridge.feature`** — the Meshtastic LoRa-mesh bridge's
+  two client-provable surfaces, OFFLINE off seeded fixtures: the timeline's
+  "via LoRa mesh" provenance chip (present on an `@mesh-*` sender's event
+  carrying a `com.hugmesh.mesh` fragment, naming its node id, with the
+  node-ids-are-not-authenticated caution in its title — and absent from an
+  ordinary message proven rendered first), and user-settings' My Mesh Devices
+  (an active radio's telemetry line + live visibility control, a revoked one
+  still listed/flagged with the server's reason and frozen, and the
+  claim/visibility/release verbs asserted on the REQUESTS they send to
+  `/bff/user/mesh-devices` — a malformed node id is refused client-side and
+  sends nothing, with the valid claim right after it as the ordering oracle).
 
 ## Sibling harness: face-track e2e (`npm run e2e:face`)
 
@@ -207,26 +232,27 @@ session against a loopback asset server, not the app UI.
 
 ## Known e2e gaps
 
-- **Meshtastic LoRa-mesh bridge** (room-settings bridge toggle, the timeline's
-  "via LoRa mesh" badge, and user-settings' My Mesh Devices — see the main
-  [README](../README.md#meshtastic-lora-mesh-bridge-rooms-timeline-my-devices))
-  has no Playwright/Gherkin coverage at all: no live bridge appservice exists
-  yet to script a real radio round-trip against, and even an offline
-  render-only scenario off seeded room-state/device fixtures (mirroring
-  `read-receipts.feature`'s offline half) hasn't been added. The unit specs
-  (`mesh-bridge-state.service.spec.ts` and the mesh sections of
-  `room-settings.component.spec.ts` / `timeline.component.spec.ts` /
-  `user-settings.component.spec.ts` / `user-bff.service.spec.ts` /
-  `matrix.service.spec.ts`) are the only coverage today.
-- **VN scene moderation** (`vn-scene-moderation.ts`'s power-level gate +
-  `SceneRateLimiter`, added to defend the shared `systems.hugmesh.vn.scene`
-  state against a hostile or seizing member — see the main
-  [README](../README.md#vn-voice-chat-scenes-props-the-stage)) has real unit
-  coverage (`vn-scene-moderation.spec.ts`, `vn-scene-state.service.spec.ts`)
-  but no Playwright/Gherkin scenario: nothing here yet drives a genuine
-  below-power-level sender's write against a live homeserver and asserts it's
-  ignored, or drives a rapid-flip burst and asserts the coalesce. Worth a
-  `@cluster` addition to `vn-scene-sweep.feature` or a new feature file.
+- **Meshtastic LoRa-mesh bridge — the ROOM-SETTINGS toggle** (see the main
+  [README](../README.md#meshtastic-lora-mesh-bridge-rooms-timeline-my-devices)).
+  The other two surfaces now have offline coverage in
+  `features/rooms/mesh-bridge.feature`; the room-settings bridge section does
+  not, and the blocker is the APP, not the harness. `room-settings.component`
+  renders `name`, `topic`, `meshEnabled`, `meshDevice` and `meshChannel` from
+  PLAIN fields assigned after `await`ing `MatrixService`'s raw `fetch`. zone.js
+  0.16 does not patch `fetch` (only `Promise`), so those continuations run
+  outside the Angular zone and NO change-detection tick follows the load: on a
+  real page load the section sits at its defaults and — because `summary` is
+  still `null` when `canEditMeshBridge()` is evaluated — renders as
+  power-LOCKED with the WHY-helptext even for a room moderator, until some
+  unrelated interaction ticks change detection. (The surfaces that do work
+  read through signals or Angular's `HttpClient`, which re-enters the zone.)
+  A scenario written against that page today could only assert the broken
+  state, so it is deliberately absent rather than green; worth fixing the
+  component first, then adding the ALLOW/DENY power-level pair.
+- **Meshtastic LoRa-mesh bridge — a real radio round-trip.** No bridge
+  appservice is deployed anywhere yet, so "a message leaves this room and comes
+  back over LoRa" stays unscriptable. The seeded fixtures prove the client's
+  rendering of that provenance, never the radio path itself.
 - **Character voice (Piper TTS synth + recorded voice-clip capture)** ships
   **dark** (`VOICE_TTS_ENABLED` default `false` — no backend deployed
   anywhere on the platform yet, see the main README's Known Gaps & Roadmap).
