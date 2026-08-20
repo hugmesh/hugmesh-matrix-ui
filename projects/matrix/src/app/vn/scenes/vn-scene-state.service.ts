@@ -6,6 +6,7 @@ import {
   parseRoomPowerLevels,
   senderMayDriveScene,
 } from './vn-scene-moderation';
+import { LEGACY_VN_SCENE_STATE_TYPES } from '../../legacy-read';
 
 /**
  * The room STATE event type carrying the shared VN scene. State (not timeline)
@@ -18,16 +19,14 @@ export const VN_SCENE_STATE_TYPE = 'net.hugmesh.vn.scene';
 /**
  * Pre-rebrand generations of {@link VN_SCENE_STATE_TYPE}; read-fallback only —
  * never written. A scene staged under an older branding still lives under that
- * name, and BOTH old generations are real data — `systems.hugmesh.*` (every
- * post-squash build before the .net domain move) and `systems.snapdragon.*`
- * (pre-rebrand rooms). Ordered newest first: reads try the canonical name,
+ * name, and BOTH old generations are real data — spelled ONLY in
+ * `legacy-read.ts` (the consolidated legacy-read list; see there for the
+ * generation policy). Ordered newest first: reads try the canonical name,
  * then each generation in order (a newer event wins whenever it exists);
  * writes stay canonical-only, so the first post-move scene change migrates the
  * room forward.
  */
-export const LEGACY_VN_SCENE_STATE_TYPES: readonly string[] = [
-  'systems.hugmesh.vn.scene', 'systems.snapdragon.vn.scene',
-];
+export { LEGACY_VN_SCENE_STATE_TYPES };
 
 /** One placed prop in the shared scene: normalized stage coords + scale. */
 export interface VnPlacedProp {

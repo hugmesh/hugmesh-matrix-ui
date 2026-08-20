@@ -568,7 +568,7 @@ describe('MatrixService (hsproxy — no homeserver token in the browser)', () =>
       .toEqual({ node: '!a1b2c3d4', device: 'default', channel: 0, registered: false, rssi: -92 });
   });
 
-  it('LEGACY read-fallback: a pre-rebrand com.snapdragon.mesh fragment still yields the badge, '
+  it('LEGACY read-fallback: a pre-rebrand LEGACY_MESH_EVENT_CONTENT_FIELD fragment still yields the badge, '
     + 'and the canonical field wins when both exist', async () => {
     // Bridged events written before the rebrand carry their provenance under
     // the legacy field name forever (events are immutable) — the badge must

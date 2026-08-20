@@ -1,4 +1,5 @@
 import { Injectable, InjectionToken, inject } from '@angular/core';
+import { LEGACY_MESH_EVENT_CONTENT_FIELD } from './legacy-read';
 
 /**
  * Homeserver name (e.g. `matrix.hugmesh.net`). NOT a base URL the client
@@ -113,11 +114,12 @@ export const MESH_EVENT_CONTENT_FIELD = 'com.hugmesh.mesh';
  * Pre-rebrand events persist the old field name; read-fallback only — never
  * written (the UI never writes this field at all — the bridge appservice
  * attaches it). Events bridged before the HugMesh rebrand carry their
- * provenance under this key; {@link MatrixService.mapEvent} reads the
+ * provenance under this key (spelled ONLY in `legacy-read.ts`, the
+ * consolidated legacy-read list); {@link MatrixService.mapEvent} reads the
  * canonical field first and falls back to this one (canonical wins when both
  * exist), so old bridged messages keep their "via LoRa mesh" badge.
  */
-export const LEGACY_MESH_EVENT_CONTENT_FIELD = 'com.snapdragon.mesh';
+export { LEGACY_MESH_EVENT_CONTENT_FIELD };
 
 /** Matches senders inside the mesh bridge appservice's EXCLUSIVE `@mesh-.*`
  *  user namespace — only the bridge can register those users, so the sender
@@ -236,8 +238,9 @@ export interface TimelineEvent {
 /**
  * The room-state event for the FIRST of `types` that exists (state_key `''`),
  * or undefined when none does — the read side of the wire-name generation
- * chains (`net.hugmesh.*` ⇠ `systems.hugmesh.*` ⇠ `systems.snapdragon.*`; see
- * the LEGACY_*_TYPES constants beside each canonical type).
+ * chains (`net.hugmesh.*` ⇠ the two pre-rebrand generations spelled ONLY in
+ * `legacy-read.ts`; see the LEGACY_*_TYPES constants beside each canonical
+ * type).
  *
  * PRESENCE wins, not parseability: a newer-generation event is returned even
  * when its content no longer parses, because it is the newer word — e.g. a

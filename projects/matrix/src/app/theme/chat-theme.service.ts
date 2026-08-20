@@ -1,5 +1,6 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { MatrixService } from '../matrix.service';
+import { LEGACY_CHAT_THEME_ACCOUNT_DATA_TYPES } from '../legacy-read';
 
 /**
  * The account-data event type the per-user chat theme persists under —
@@ -15,17 +16,15 @@ export const CHAT_THEME_ACCOUNT_DATA_TYPE = 'net.hugmesh.chat_theme';
  * Pre-rebrand generations of {@link CHAT_THEME_ACCOUNT_DATA_TYPE};
  * read-fallback only — never written. An account whose theme was saved under
  * an older branding still carries it under that name, and BOTH old
- * generations are real data — `systems.hugmesh.*` (every post-squash build
- * before the .net domain move) and `systems.snapdragon.*` (pre-rebrand
- * accounts). Ordered newest first: {@link ChatThemeService} reads the
- * canonical type, then each generation in order (the newest generation that
- * has content wins — including a canonical `{}` reset marker); every write
- * goes to the canonical type only, so the first post-move save migrates the
- * account forward.
+ * generations are real data — spelled ONLY in `legacy-read.ts` (the
+ * consolidated legacy-read list; see there for the generation policy).
+ * Ordered newest first: {@link ChatThemeService} reads the canonical type,
+ * then each generation in order (the newest generation that has content wins
+ * — including a canonical `{}` reset marker); every write goes to the
+ * canonical type only, so the first post-move save migrates the account
+ * forward.
  */
-export const LEGACY_CHAT_THEME_ACCOUNT_DATA_TYPES: readonly string[] = [
-  'systems.hugmesh.chat_theme', 'systems.snapdragon.chat_theme',
-];
+export { LEGACY_CHAT_THEME_ACCOUNT_DATA_TYPES };
 
 /** Instant-boot cache: the last saved theme, applied synchronously on the first
  *  theme-root registration BEFORE the account-data fetch resolves (no flash of

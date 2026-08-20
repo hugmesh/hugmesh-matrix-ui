@@ -581,13 +581,15 @@ As of July 2026:
   **`net.hugmesh.*`** (it follows the `.net` domain move, like the Java
   package rename), every WRITE mints only the canonical name, and every READ
   walks a three-generation fallback chain — `net.hugmesh.<x>` →
-  `systems.hugmesh.<x>` (post-squash builds) → `systems.snapdragon.<x>`
-  (pre-rebrand) — newest present generation winning, so rooms and accounts
-  written by any earlier build keep working without a data migration. Each
-  service exports its `LEGACY_*` constants beside the canonical one; the
-  `com.hugmesh.mesh` CONTENT field keeps its spelling (read-fallback to
-  `com.snapdragon.mesh`). The meshbridge appservice honors the same chain
-  on its side (hugmesh-generator `bridge.py`).
+  `systems.hugmesh.<x>` (post-squash builds) → the pre-rebrand original —
+  newest present generation winning, so rooms and accounts written by any
+  earlier build keep working without a data migration. Every pre-rebrand
+  spelling lives ONLY in the consolidated legacy-read list
+  (`projects/matrix/src/app/legacy-read.ts`); each service re-exports its
+  `LEGACY_*` constants beside the canonical one. The `com.hugmesh.mesh`
+  CONTENT field keeps its spelling (read-fallback to the pre-rebrand field
+  name, `LEGACY_MESH_EVENT_CONTENT_FIELD`). The meshbridge appservice honors
+  the same chain on its side (hugmesh-generator `bridge.py`).
 - **Shipped on `main`** — the Angular 22 + native-federation `matrix` remote is
   built and deployed as this repo's image: the full Element-like CS-API client
   (`MATRIX_ROUTES`), additive role tiers, the `matrix_domainlocked` SOCIAL

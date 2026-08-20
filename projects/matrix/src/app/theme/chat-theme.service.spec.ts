@@ -176,9 +176,10 @@ describe('ChatThemeService', () => {
   });
 
   it('LEGACY read-fallback: a theme saved under EITHER pre-rebrand name still loads', async () => {
-    // Pre-.net-move accounts persist systems.hugmesh.chat_theme; pre-rebrand
-    // accounts persist systems.snapdragon.chat_theme. Both are real data the
-    // load chain must reach — writes only ever go to the canonical type.
+    // Pre-.net-move accounts persist the middle generation; pre-rebrand
+    // accounts the oldest (both spelled only in legacy-read.ts). Both are real
+    // data the load chain must reach — writes only ever go to the canonical
+    // type.
     for (const legacyType of LEGACY_CHAT_THEME_ACCOUNT_DATA_TYPES) {
       // A fresh injector per generation: loadRemote only ever boots once.
       TestBed.resetTestingModule();

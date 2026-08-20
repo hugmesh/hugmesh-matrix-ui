@@ -1,5 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { MatrixService } from '../matrix.service';
+import { LEGACY_CHAT3D_STATE_TYPES } from '../legacy-read';
 
 /**
  * The room STATE event type carrying the per-room "Shadows of the Net" 3D chat
@@ -14,16 +15,14 @@ export const CHAT3D_STATE_TYPE = 'net.hugmesh.chat3d';
  * Pre-rebrand generations of {@link CHAT3D_STATE_TYPE}; read-fallback only —
  * never written. Room state is immutable history: a room keeps whatever name
  * was current when its setting was last written, and BOTH old generations are
- * real data — `systems.hugmesh.*` (every post-squash build before the .net
- * domain move) and `systems.snapdragon.*` (pre-rebrand rooms). Ordered newest
- * first: every read path tries the canonical name, then each generation in
- * order (a newer event wins whenever it exists). Every write — and the
- * room-settings power-level mirroring — stays canonical-only, so the first
- * post-move write migrates the room forward.
+ * real data — spelled ONLY in `legacy-read.ts` (the consolidated legacy-read
+ * list; see there for the generation policy). Ordered newest first: every
+ * read path tries the canonical name, then each generation in order (a newer
+ * event wins whenever it exists). Every write — and the room-settings
+ * power-level mirroring — stays canonical-only, so the first post-move write
+ * migrates the room forward.
  */
-export const LEGACY_CHAT3D_STATE_TYPES: readonly string[] = [
-  'systems.hugmesh.chat3d', 'systems.snapdragon.chat3d',
-];
+export { LEGACY_CHAT3D_STATE_TYPES };
 
 /** Room visual style the Godot scene boots with. */
 export const CHAT3D_STYLES = ['noir', 'default'] as const;

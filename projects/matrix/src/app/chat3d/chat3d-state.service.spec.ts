@@ -103,9 +103,10 @@ describe('Chat3dStateService', () => {
   });
 
   it('LEGACY read-fallback: a setting saved under EITHER pre-rebrand name still parses', async () => {
-    // Pre-.net-move rooms persist systems.hugmesh.*; pre-rebrand rooms persist
-    // systems.snapdragon.*. Both are real data the read chain must reach —
-    // writes never touch them (see the canonical-write assertions below).
+    // Pre-.net-move rooms persist the middle generation; pre-rebrand rooms the
+    // oldest (both spelled only in legacy-read.ts). Both are real data the
+    // read chain must reach — writes never touch them (see the canonical-write
+    // assertions below).
     for (const legacyType of LEGACY_CHAT3D_STATE_TYPES) {
       matrix.getStateEvent = jasmine.createSpy('getStateEvent').and.callFake(
         async (_room: string, type: string) => {

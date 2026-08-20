@@ -9,6 +9,7 @@ import {
 import {
   CHAT3D_STATE_TYPE, Chat3dState, LEGACY_CHAT3D_STATE_TYPES, parseChat3dState,
 } from './chat3d-state.service';
+import { LEGACY_CHAT3D_SCENE_TYPES } from '../legacy-read';
 
 /**
  * The room STATE event type carrying the shared 3D-room media placements.
@@ -21,16 +22,14 @@ export const CHAT3D_SCENE_TYPE = 'net.hugmesh.chat3d.scene';
 /**
  * Pre-rebrand generations of {@link CHAT3D_SCENE_TYPE}; read-fallback only —
  * never written. A scene placed under an older branding still lives under that
- * name, and BOTH old generations are real data — `systems.hugmesh.*` (every
- * post-squash build before the .net domain move) and `systems.snapdragon.*`
- * (pre-rebrand rooms). Ordered newest first: reads try the canonical name,
+ * name, and BOTH old generations are real data — spelled ONLY in
+ * `legacy-read.ts` (the consolidated legacy-read list; see there for the
+ * generation policy). Ordered newest first: reads try the canonical name,
  * then each generation in order (a newer event wins whenever it exists);
  * writes stay canonical-only, so the first post-move placement migrates the
  * room's scene forward.
  */
-export const LEGACY_CHAT3D_SCENE_TYPES: readonly string[] = [
-  'systems.hugmesh.chat3d.scene', 'systems.snapdragon.chat3d.scene',
-];
+export { LEGACY_CHAT3D_SCENE_TYPES };
 
 /** The scene's media surfaces: 6 round-table spots, 4 wall screens, 1 stage. */
 export const SURFACE_ID_PATTERN = /^(table-[1-6]|screen-[1-4]|stage)$/;

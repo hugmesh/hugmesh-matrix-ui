@@ -97,8 +97,9 @@ describe('MeshBridgeStateService', () => {
   });
 
   it('LEGACY read-fallback: a bridge setting saved under EITHER pre-rebrand name still parses', async () => {
-    // Pre-.net-move rooms persist systems.hugmesh.*; pre-rebrand rooms persist
-    // systems.snapdragon.*. Both are real data — and writes never touch them.
+    // Pre-.net-move rooms persist the middle generation; pre-rebrand rooms the
+    // oldest (both spelled only in legacy-read.ts). Both are real data — and
+    // writes never touch them.
     for (const legacyType of LEGACY_MESH_BRIDGE_STATE_TYPES) {
       matrix.getStateEvent = jasmine.createSpy('getStateEvent').and.callFake(
         async (_room: string, type: string) => {

@@ -6,6 +6,7 @@ import {
   senderMayDriveScene,
 } from '../vn/scenes/vn-scene-moderation';
 import { CHAT3D_STATE_TYPE, LEGACY_CHAT3D_STATE_TYPES, parseChat3dState } from './chat3d-state.service';
+import { LEGACY_CHAT3D_STAGE_TYPES } from '../legacy-read';
 
 /**
  * The room STATE event naming who currently holds the chamber's STAGE — the
@@ -30,16 +31,14 @@ export const CHAT3D_STAGE_TYPE = 'net.hugmesh.chat3d.stage';
 /**
  * Pre-rebrand generations of {@link CHAT3D_STAGE_TYPE}; read-fallback only —
  * never written. A grant written under an older branding still names a holder,
- * and BOTH old generations are real data — `systems.hugmesh.*` (every
- * post-squash build before the .net domain move) and `systems.snapdragon.*`
- * (pre-rebrand rooms). Ordered newest first: the roomState scan takes the
- * NEWEST generation's grant whenever it exists (including a newer "nobody",
- * which must keep the platform empty rather than resurrect an older grant);
- * every write goes to the canonical type only.
+ * and BOTH old generations are real data — spelled ONLY in `legacy-read.ts`
+ * (the consolidated legacy-read list; see there for the generation policy).
+ * Ordered newest first: the roomState scan takes the NEWEST generation's
+ * grant whenever it exists (including a newer "nobody", which must keep the
+ * platform empty rather than resurrect an older grant); every write goes to
+ * the canonical type only.
  */
-export const LEGACY_CHAT3D_STAGE_TYPES: readonly string[] = [
-  'systems.hugmesh.chat3d.stage', 'systems.snapdragon.chat3d.stage',
-];
+export { LEGACY_CHAT3D_STAGE_TYPES };
 
 /** LIMIT: the Matrix spec's user-id cap — the holder is an mxid or nothing. */
 export const MAX_MXID_LENGTH = 255;
