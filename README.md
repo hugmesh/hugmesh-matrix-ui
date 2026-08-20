@@ -798,17 +798,27 @@ recorded so readers don't mistake planned platform work for shipped UI.
   traffic, and the mesh-device-registry backend behind `/bff/user/mesh-devices`,
   are cross-repo infra tracked outside this UI — this repo cannot itself prove
   a real radio round-trip.
-- **Known e2e gap:** the mesh bridge (above) has no Playwright/Gherkin
-  coverage at all yet — no live bridge appservice exists to script a real
-  round-trip against, so even an offline render-only scenario (badge/section
-  rendering off seeded state, mirroring the read-receipts pattern) hasn't been
-  added. Worth a `features/rooms/mesh-bridge.feature` once the offline shape
-  is worth scripting or the backend lands.
-- **Known e2e gap:** the shared VN-scene moderation trust boundary
+- **Known e2e gap (narrowed):** the mesh bridge (above) now has offline
+  Playwright/Gherkin coverage of the timeline provenance badge and the My Mesh
+  Devices list/claim/visibility/release flow
+  (`e2e/features/rooms/mesh-bridge.feature`). Two pieces are still uncovered:
+  a real radio round-trip (no bridge appservice is deployed anywhere to script
+  one against), and the **room-settings bridge toggle**, which is blocked on a
+  change-detection defect rather than on the harness — `room-settings.component`
+  renders `name`/`topic`/`meshEnabled`/`meshDevice`/`meshChannel` from plain
+  fields assigned after `await`ing `MatrixService`'s raw `fetch`, and zone.js
+  0.16 does not patch `fetch`, so no change-detection tick follows the load and
+  the section stays at its defaults (and falsely power-locked, `summary` being
+  still `null`) until an unrelated interaction ticks change detection.
+- **Known e2e gap (closed):** the shared VN-scene moderation trust boundary
   (`vn-scene-moderation.ts`'s power-level gate + `SceneRateLimiter`, see
-  [VN voice chat](#vn-voice-chat-scenes-props-the-stage)) is covered by unit
-  specs only — there is no Playwright/Gherkin scenario driving a hostile
-  below-power-level sender or a rapid-flip burst against a live homeserver.
+  [VN voice chat](#vn-voice-chat-scenes-props-the-stage)) is now driven
+  end-to-end by `e2e/features/calls/vn-scene-moderation.feature`: a
+  below-power-level sender's scene event is ignored (last good scene kept) and
+  a per-poll flip burst is coalesced to the limiter's 3-per-5s budget. Both run
+  OFFLINE off route-fulfilled room state — which is the only honest way to
+  reach the case, since a homeserver that enforces the power level would refuse
+  the hostile write in the first place.
 
 ## Contributing
 
