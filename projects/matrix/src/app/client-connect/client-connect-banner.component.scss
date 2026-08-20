@@ -1,7 +1,15 @@
-// Client-connect banner. Colours go through --hugm-chat-* / --sd-* custom
+// Client-connect banner. Colours go through --hugm-chat-* / --hug-* custom
 // properties where the surrounding chat theme defines them, with literal
 // fallbacks so the banner is never invisible on a deployment that ships no
 // theme (the whole point of the banner is that it can be READ).
+//
+// NOTE on the two *-bg tokens below: --hug-success-bg / --hug-warning-bg are
+// not (yet) emitted by the theme pipeline — hugmesh_studio/core/theme.py ships
+// 48 tokens and a tint pair is not among them, and no :root in this repo or any
+// sibling UI defines them either. Measured in Chrome with the generator's
+// tests/stack/.theme.css linked, both names resolve to "" and the literal
+// fallback is what actually renders. They are kept as named hooks so a future
+// theme token drops straight in; the literal is the live value today.
 .client-connect {
   margin: 0;
   padding: 10px 12px;
@@ -42,13 +50,13 @@
 
 // PROVEN-usable: a positive, low-key affirmative tint.
 .client-connect--ok {
-  background: var(--sd-success-bg, rgba(46, 160, 67, 0.12));
+  background: var(--hug-success-bg, rgba(46, 160, 67, 0.12));
 }
 
 // NOT usable: a caution tint, NOT an error red — nothing is broken for the
 // user's normal in-app chat, a capability simply is not routed yet.
 .client-connect--blocked {
-  background: var(--sd-warning-bg, rgba(210, 153, 34, 0.14));
+  background: var(--hug-warning-bg, rgba(210, 153, 34, 0.14));
 }
 
 .client-connect__reason {
