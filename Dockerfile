@@ -20,14 +20,14 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist/matrix/browser /usr/share/nginx/html
 EXPOSE 80
 
-#### Runtime THEME injection (the fleet-wide login-ui 50-snap-theme.sh
+#### Runtime THEME injection (the fleet-wide login-ui 50-hug-theme.sh
 #### mechanism; see hugmesh-host-shell PR #11 for the full rationale). The hook
 #### writes $SNAP_THEME_CSS verbatim at container start; nginx serves it via
-#### the exact-match /snap-theme.css alias. /tmp, NOT the docroot: on the
+#### the exact-match /hug-theme.css alias. /tmp, NOT the docroot: on the
 #### nginx-unprivileged images uid 101 cannot write the docroot, and on the
 #### root images /tmp is equally correct — ONE stanza for the whole fleet.
 #### COPY --chmod, NOT COPY + RUN chmod: unprivileged final stages run as
 #### uid 101 and a RUN chmod on root-owned COPY output exits 1 (BuildKit is
 #### always on for this stack: Makefile DOCKER_BUILDKIT=1).
-COPY --chmod=0755 docker-entrypoint.d/50-snap-theme.sh /docker-entrypoint.d/50-snap-theme.sh
-ENV SNAP_THEME_OUT=/tmp/snap-theme.css
+COPY --chmod=0755 docker-entrypoint.d/50-hug-theme.sh /docker-entrypoint.d/50-hug-theme.sh
+ENV HUG_THEME_OUT=/tmp/hug-theme.css
