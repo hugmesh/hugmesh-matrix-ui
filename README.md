@@ -616,7 +616,10 @@ As of July 2026:
   Covered by the full unit-test suite (`ChromeHeadlessCI`, offline, 613/613
   passing), including the mesh-device visibility rollback behaviour (a
   rejected visibility change reverts both the signal and the native
-  `<select>` element). End-to-end coverage does not exist yet — see
+  `<select>` element). End-to-end coverage now exists for the timeline provenance badge and the My
+  Mesh Devices list/claim/visibility/release flow
+  (`e2e/features/rooms/mesh-bridge.feature`); the room-settings bridge toggle
+  and a real radio round-trip are still uncovered — see
   [Known Gaps & Roadmap](#known-gaps--roadmap).
 - **Auth aligned to the platform's native-login model** — login/registration is
   a native form POST to the login remote's own BFF; Casdoor is reached only
