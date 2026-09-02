@@ -5,6 +5,15 @@ import { registeredGuard } from './registration.guard';
 import { modGuard } from './mod.guard';
 import { gamesGuard } from './games.guard';
 import { gamesAdminGuard } from './games-admin.guard';
+import {
+  GAMES_ADMIN_REMOTE,
+  GAMES_ADMIN_ROUTES_CONST,
+  GAMES_REMOTE,
+  GAMES_ROUTES_CONST,
+  gamesAdminPlaceholderRoutes,
+  gamesPlaceholderRoutes,
+  loadGamesChildRoutes,
+} from './games-remote.routes';
 
 /**
  * Host shell routes. Every feature is a native-federation remote (its own repo
@@ -20,10 +29,13 @@ import { gamesAdminGuard } from './games-admin.guard';
  * Matrix/Mastodon/user require full registration; Admin requires the Casdoor
  * admin role; mod requires the Casdoor mod (or admin) role (modGuard).
  *
- * Phase 8/10: games/games-admin are GUARDED LOCAL PLACEHOLDERS, not federated
- * mounts — no games UI remote exists (or is registered in
- * federation.manifest.json) yet. See GamesPlaceholderComponent /
- * GamesAdminPlaceholderComponent.
+ * Phase 8/10 → issue #2: games/games-admin are MANIFEST-DRIVEN federated
+ * mounts. When `federation.manifest.json` registers the `games` /
+ * `games-admin` remote, `loadChildren` mounts its exposed './routes' exactly
+ * like every sibling remote above; while unregistered (no games UI remote has
+ * been built yet) the loader falls back to the honest TODO placeholder
+ * (GamesPlaceholderComponent / GamesAdminPlaceholderComponent) — never a
+ * silent 404 or a faked surface. See games-remote.routes.ts for the contract.
  */
 const remote = (remoteName: string, exposed = './routes') => (key: string) =>
   loadRemoteModule(remoteName, exposed).then((m) => m[key]);
@@ -43,14 +55,13 @@ export const routes: Routes = [
   {
     path: 'games/admin',
     canActivate: [gamesAdminGuard],
-    loadComponent: () =>
-      import('./games-admin-placeholder.component').then((m) => m.GamesAdminPlaceholderComponent),
+    loadChildren: () =>
+      loadGamesChildRoutes(GAMES_ADMIN_REMOTE, GAMES_ADMIN_ROUTES_CONST, gamesAdminPlaceholderRoutes),
   },
   {
     path: 'games',
     canActivate: [gamesGuard],
-    loadComponent: () =>
-      import('./games-placeholder.component').then((m) => m.GamesPlaceholderComponent),
+    loadChildren: () => loadGamesChildRoutes(GAMES_REMOTE, GAMES_ROUTES_CONST, gamesPlaceholderRoutes),
   },
   { path: '', children: [] },
 ];

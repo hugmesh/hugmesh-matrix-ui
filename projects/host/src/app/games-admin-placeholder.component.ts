@@ -2,16 +2,20 @@ import { Component } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
 /**
- * Phase 8/10 DERIVED ROLE_GAMES_ADMIN mount. This is a GUARDED PLACEHOLDER (see
- * gamesAdminGuard on the /games/admin route), NOT a federated mount: no
- * games-admin UI remote exists yet, so there is deliberately NO
- * loadRemoteModule('gamesAdmin') here.
+ * Phase 8/10 DERIVED ROLE_GAMES_ADMIN mount — UNREGISTERED-REMOTE FALLBACK
+ * (issue #2). /games/admin is now a manifest-driven federated mount (see
+ * games-remote.routes.ts): when `federation.manifest.json` registers the
+ * `games-admin` remote, its exposed GAMES_ADMIN_ROUTES mount there and this
+ * component is never reached. While no games-admin UI remote exists (or is
+ * registered), the loader falls back here.
  *
  * Honest-disclosure invariant: this NEVER fakes a working games-admin console —
  * a derived ROLE_GAMES_ADMIN holder reaching /games/admin sees an explicit TODO,
  * not a silent 404 or a faked success state.
  *
- * TODO(games-admin-ui): swap this placeholder for the real games-admin UI remote.
+ * TODO(games-admin-ui): once the games-admin remote ships and its `games-admin`
+ * manifest entry lands, delete this fallback component + its spec (the mount
+ * needs no change).
  */
 @Component({
   selector: 'hug-games-admin-placeholder',
@@ -25,8 +29,9 @@ import { RouterLink } from '@angular/router';
         You have the derived games-admin role, but the games-admin
         micro-frontend
         (<code data-testid="games-admin-future-remote">{{ futureRemote }}</code>)
-        has not been built yet. This is a placeholder route — no remote is
-        mounted here.
+        has not been built yet, so no <code>games-admin</code> remote is
+        registered in the federation manifest. This is a placeholder fallback —
+        no remote is mounted here.
       </p>
       <a routerLink="/" data-testid="games-admin-back">Back to home</a>
     </section>
