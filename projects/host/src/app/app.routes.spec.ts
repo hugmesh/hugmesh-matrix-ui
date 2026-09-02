@@ -1,4 +1,4 @@
-import { Route } from '@angular/router';
+import { Route, Routes } from '@angular/router';
 
 import { routes } from './app.routes';
 import { adminGuard } from './admin.guard';
@@ -30,36 +30,47 @@ describe('host app.routes wiring', () => {
     expect(mod.loadChildren).withContext('still mounts the real mod remote').toBeDefined();
   });
 
-  it('/games mounts a GUARDED LOCAL PLACEHOLDER behind gamesGuard (no games UI remote yet)', () => {
+  it('/games is a MANIFEST-DRIVEN federated mount behind gamesGuard (issue #2)', () => {
     const games = routeFor('games');
     expect(games.canActivate).withContext('games entry-point gate').toContain(gamesGuard);
-    expect(games.loadComponent).withContext('local placeholder, not a remote mount').toBeDefined();
-    expect(games.loadChildren).withContext('no games UI remote exists yet').toBeUndefined();
+    expect(games.loadChildren).withContext('manifest-driven remote mount').toBeDefined();
+    expect(games.loadComponent)
+      .withContext('no longer a hardcoded local placeholder')
+      .toBeUndefined();
   });
 
-  it('/games loadComponent resolves the GamesPlaceholderComponent', async () => {
+  it('/games loadChildren falls back to GamesPlaceholderComponent while no games remote is registered', async () => {
+    // The test env has no `games` manifest entry (the karma server does not
+    // even serve the manifest asset), so the loader must take the honest
+    // placeholder fallback — the exact production behavior today.
     const { GamesPlaceholderComponent } = await import('./games-placeholder.component');
-    const resolved = await (routeFor('games').loadComponent as () => Promise<unknown>)();
-    expect(resolved).toBe(GamesPlaceholderComponent);
+    const resolved = await (routeFor('games').loadChildren as () => Promise<Routes>)();
+    expect(resolved.length).toBe(1);
+    expect(resolved[0].path).toBe('');
+    expect(resolved[0].component).toBe(GamesPlaceholderComponent);
   });
 
-  it('/games/admin mounts a GUARDED LOCAL PLACEHOLDER behind gamesAdminGuard (no games-admin UI remote yet)', () => {
+  it('/games/admin is a MANIFEST-DRIVEN federated mount behind gamesAdminGuard (issue #2)', () => {
     const gamesAdmin = routeFor('games/admin');
     expect(gamesAdmin.canActivate).withContext('derived games-admin gate').toContain(gamesAdminGuard);
-    expect(gamesAdmin.loadComponent).withContext('local placeholder, not a remote mount').toBeDefined();
-    expect(gamesAdmin.loadChildren).withContext('no games-admin UI remote exists yet').toBeUndefined();
+    expect(gamesAdmin.loadChildren).withContext('manifest-driven remote mount').toBeDefined();
+    expect(gamesAdmin.loadComponent)
+      .withContext('no longer a hardcoded local placeholder')
+      .toBeUndefined();
   });
 
-  it('/games/admin loadComponent resolves the GamesAdminPlaceholderComponent', async () => {
+  it('/games/admin loadChildren falls back to GamesAdminPlaceholderComponent while no games-admin remote is registered', async () => {
     const { GamesAdminPlaceholderComponent } = await import('./games-admin-placeholder.component');
-    const resolved = await (routeFor('games/admin').loadComponent as () => Promise<unknown>)();
-    expect(resolved).toBe(GamesAdminPlaceholderComponent);
+    const resolved = await (routeFor('games/admin').loadChildren as () => Promise<Routes>)();
+    expect(resolved.length).toBe(1);
+    expect(resolved[0].path).toBe('');
+    expect(resolved[0].component).toBe(GamesAdminPlaceholderComponent);
   });
 
   it('/games/admin is registered BEFORE /games so the specific path matches first', () => {
     const gamesAdminIdx = routes.findIndex((r) => r.path === 'games/admin');
     const gamesIdx = routes.findIndex((r) => r.path === 'games');
     expect(gamesAdminIdx).toBeGreaterThanOrEqual(0);
-    expect(gamesAdminIdx).withContext('games/admin precedes the games placeholder').toBeLessThan(gamesIdx);
+    expect(gamesAdminIdx).withContext('games/admin precedes the games mount').toBeLessThan(gamesIdx);
   });
 });
