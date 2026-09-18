@@ -209,6 +209,11 @@ carrying `?room=<roomId>&mode=vn-voice|video`.
 
 ## Shadows of the Net — 3D chat room (chat3d)
 
+> **Not reachable in any deployment today.** Everything below is shipped
+> client-side, but the games origin it iframes (`__HUG_GAMES_URL__`, default
+> `https://games.hugmesh.net`) serves **404** — see
+> [Known gaps](#known-gaps--roadmap) and hugmesh-generator #470.
+
 A GitS-style 3D chamber per Matrix room (`rooms/:roomId/chat3d`, offered by a
 🥽 room-view button once a moderator enables it in room settings). The scene
 itself is the hugmesh.games `shadows-of-the-net` Godot WASM bundle embedded
@@ -779,6 +784,39 @@ recorded so readers don't mistake planned platform work for shipped UI.
   self-contained; the DAST/load legs still need the shared harness
   vendored/fetched at `PENTEST_HARNESS_DIR`, and no pipeline execution has been
   verified yet. See [Deploy](#deploy).
+- 🚧 **The games origin serves nothing — chat3d is unreachable in every real
+  deployment, and `/games` has no remote to mount.** Two separate surfaces, one
+  missing dependency, recorded here so neither reads as shipped:
+  - **Shadows of the Net (this repo's DEPLOYED remote).** The client is ✅
+    shipped — `projects/matrix/src/app/chat3d/**`, the `rooms/:roomId/chat3d`
+    route, and the moderator enable toggle in `room-settings.component` — but
+    `Chat3dHostComponent` iframes
+    `${__HUG_GAMES_URL__}/_remotes/wasm-fragment/shadows-of-the-net/index.html`,
+    and nothing in the mesh serves that origin.
+    No deployment injects `__HUG_GAMES_URL__` (only the generator's mock lane
+    does), so the bridge falls back to `chat3d-bridge.ts`'s default
+    `https://games.hugmesh.net` — the right host, behind which there is nothing:
+    measured at the live front door on 2026-09-17 (hugmesh-generator #470),
+    `Host: games.hugmesh.net /` → **404** and the bundle path → **401**, with no
+    games pods running though the `hugmesh-games` ArgoCD Application is
+    declared. So today the 3D room **404s at the iframe** and the user sits at
+    "Loading the 3D room…". Nothing in this repo can fix that; #470 tracks it,
+    along with two further blockers outside this UI: a `.uidist` build
+    predating the `systems.hugmesh.chat3d*` → `net.hugmesh.chat3d*` rename, and
+    the fact that no seed/bootstrap/fixture ever turns the room flag on (the
+    moderator control exists here — see the change-detection caveat in the
+    e2e-gap note below — but somebody still has to click it).
+  - **`/games` and `/games/admin` (demo host only, issue #2).** Both are real
+    manifest-driven `loadChildren` mounts (`games-remote.routes.ts`): register
+    a `games` / `games-admin` entry in `federation.manifest.json` and the
+    remote's exposed `./routes` mounts with no code change. **No such remote
+    exists anywhere on the platform** — no `hugmesh-games-ui` repo, no entry in
+    any manifest — so what renders is the honest TODO placeholder, by design,
+    and it will keep rendering until one ships. Note this surface is
+    `projects/host`, the local dev/E2E shell (see the table at the top), so it
+    is not part of the deployed image at all; the production shell
+    (`hugmesh-host-shell`) carries its own copy of the same placeholders.
+
 - 🚧 **Piper TTS synth seam for character voice** — the **client side is ✅
   shipped**: `VoiceSynthService`/`VoicePlaybackService`/`CharacterCaptureService`
   (see [VN character render, stickers & character voice](#vn-character-render-stickers--character-voice))

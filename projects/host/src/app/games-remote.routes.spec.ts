@@ -10,6 +10,7 @@ import {
   gamesAdminPlaceholderRoutes,
   gamesPlaceholderRoutes,
   loadGamesChildRoutes,
+  remoteLoadOptions,
 } from './games-remote.routes';
 import { GamesPlaceholderComponent } from './games-placeholder.component';
 import { GamesAdminPlaceholderComponent } from './games-admin-placeholder.component';
@@ -109,5 +110,43 @@ describe('games-remote.routes (manifest-driven games mounts, issue #2)', () => {
     );
     expect(routes.length).toBe(1);
     expect(routes[0].component).toBe(GamesAdminPlaceholderComponent);
+  });
+
+  // ── The options object handed to native-federation ────────────────────────
+  // MEASURED against the installed @softarc/native-federation-runtime: when
+  // `ensureRemoteInitialized()` lazily registers an entry `initFederation()`
+  // never processed, it calls `fetchAndRegisterRemote(remoteEntry)` with no
+  // name, so the remote lands in the registry under its OWN self-declared
+  // `remoteEntry.json` name. Passing `remoteName` then makes
+  // `getRemoteNameByOptions()` look up our MANIFEST KEY, miss, and throw
+  // `unknown remote games` after a successful fetch. Omitting it resolves by
+  // base URL, which both the boot path and the lazy path populate.
+  describe('remoteLoadOptions (what actually reaches loadRemoteModule)', () => {
+    const ENTRY = 'https://games.hugmesh.net/remoteEntry.json';
+
+    it('passes the manifest entry URL as `remoteEntry` (the lazy-register switch)', () => {
+      expect(remoteLoadOptions(GAMES_REMOTE, ENTRY, './routes')).toEqual({
+        remoteEntry: ENTRY,
+        exposedModule: './routes',
+      });
+    });
+
+    it('does NOT pass `remoteName` — a remote self-naming `hugmesh-games-ui` must still mount', () => {
+      const opts = remoteLoadOptions(GAMES_REMOTE, ENTRY, './routes') as Record<string, unknown>;
+      // `toEqual` above already pins the shape; this asserts the omission
+      // directly so the reason survives a refactor that widens the object.
+      expect('remoteName' in opts)
+        .withContext('remoteName is resolved by base URL, not by the manifest key')
+        .toBeFalse();
+      expect(opts['remoteName']).toBeUndefined();
+    });
+
+    it('carries the games-admin exposed contract the same way', () => {
+      const entry = 'https://games.hugmesh.net/admin/remoteEntry.json';
+      expect(remoteLoadOptions(GAMES_ADMIN_REMOTE, entry, './routes')).toEqual({
+        remoteEntry: entry,
+        exposedModule: './routes',
+      });
+    });
   });
 });
