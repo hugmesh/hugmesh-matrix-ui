@@ -127,10 +127,41 @@ export function remoteLoadOptions(
   return { remoteEntry: remoteEntryUrl, exposedModule };
 }
 
-const DEFAULT_DEPS: GamesRemoteDeps = {
+/**
+ * Composes any loader (real `loadRemoteModule`, or a spec's plain fake — no
+ * cast against the library's overloaded type needed, since this only
+ * requires the one options-object call shape `remoteLoadOptions()` produces)
+ * with `remoteLoadOptions()`. This is the ONLY place production code may
+ * call a loader with the manifest key + entry — `DEFAULT_DEPS.loadRemote`
+ * below is required to be its output, never a hand-written duplicate, so a
+ * spec that drives `makeDefaultLoadRemote` with a fake loader is exercising
+ * the exact composition production uses, not a lookalike.
+ */
+export function makeDefaultLoadRemote(
+  loader: (options: ReturnType<typeof remoteLoadOptions>) => Promise<Record<string, unknown>>,
+): GamesRemoteDeps['loadRemote'] {
+  return (remoteName, remoteEntryUrl, exposedModule) =>
+    loader(remoteLoadOptions(remoteName, remoteEntryUrl, exposedModule));
+}
+
+/**
+ * The ACTUAL production composition (real `loadRemoteModule` bound in), named
+ * and exported so a spec can pin it two ways: (1) drive it with a fake loader
+ * to assert `remoteName` never reaches whatever loader it wraps — see the
+ * `makeDefaultLoadRemote` describe block; (2) assert `DEFAULT_DEPS.loadRemote
+ * === defaultLoadRemote` by reference below. (2) is what a spec on (1) alone
+ * cannot catch: someone hand-reverting the `DEFAULT_DEPS` field to a NEW
+ * inline arrow (PR #15's bug, pasted back) would leave `makeDefaultLoadRemote`
+ * itself untouched and its own spec green, while production silently regains
+ * the bug. Binding `DEFAULT_DEPS.loadRemote` to this named constant, and
+ * pinning that exact reference, forces such a revert to change (and therefore
+ * be caught failing) this spec too.
+ */
+export const defaultLoadRemote: GamesRemoteDeps['loadRemote'] = makeDefaultLoadRemote(loadRemoteModule);
+
+export const DEFAULT_DEPS: GamesRemoteDeps = {
   fetchManifest: fetchFederationManifest,
-  loadRemote: (remoteName, remoteEntryUrl, exposedModule) =>
-    loadRemoteModule(remoteLoadOptions(remoteName, remoteEntryUrl, exposedModule)),
+  loadRemote: defaultLoadRemote,
 };
 
 /**

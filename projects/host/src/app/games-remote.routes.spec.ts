@@ -1,15 +1,18 @@
 import { Routes } from '@angular/router';
 
 import {
+  DEFAULT_DEPS,
   FEDERATION_MANIFEST_URL,
   GAMES_ADMIN_REMOTE,
   GAMES_ADMIN_ROUTES_CONST,
   GAMES_REMOTE,
   GAMES_ROUTES_CONST,
   GamesRemoteDeps,
+  defaultLoadRemote,
   gamesAdminPlaceholderRoutes,
   gamesPlaceholderRoutes,
   loadGamesChildRoutes,
+  makeDefaultLoadRemote,
   remoteLoadOptions,
 } from './games-remote.routes';
 import { GamesPlaceholderComponent } from './games-placeholder.component';
@@ -147,6 +150,43 @@ describe('games-remote.routes (manifest-driven games mounts, issue #2)', () => {
         remoteEntry: entry,
         exposedModule: './routes',
       });
+    });
+  });
+
+  // ── The PRODUCTION composition (what DEFAULT_DEPS.loadRemote actually is) ─
+  // Two specs, closing two DIFFERENT ways the fix could regress:
+  //   (a) `makeDefaultLoadRemote`'s own logic breaks (e.g. someone inlines
+  //       `remoteName` back into the loader call inside it) — caught by
+  //       driving it with a fake loader, no ESM mocking required.
+  //   (b) `DEFAULT_DEPS.loadRemote` stops being `defaultLoadRemote` at all —
+  //       e.g. a revert that pastes PR #15's inline arrow back at the
+  //       `DEFAULT_DEPS` callsite, bypassing this composition entirely and
+  //       leaving (a) green because `makeDefaultLoadRemote` itself was never
+  //       touched. Caught by reference equality: nothing else may construct
+  //       `DEFAULT_DEPS.loadRemote`.
+  describe('makeDefaultLoadRemote (the composition DEFAULT_DEPS.loadRemote is built from)', () => {
+    const ENTRY = 'https://games.hugmesh.net/remoteEntry.json';
+
+    it('never lets `remoteName` reach the wrapped loader', async () => {
+      const calls: Array<{ remoteEntry: string; exposedModule: string }> = [];
+      const fakeLoader = (opts: { remoteEntry: string; exposedModule: string }) => {
+        calls.push(opts);
+        return Promise.resolve({});
+      };
+      const loadRemote = makeDefaultLoadRemote(fakeLoader);
+      await loadRemote(GAMES_REMOTE, ENTRY, './routes');
+      expect(calls.length).toBe(1);
+      expect('remoteName' in (calls[0] as Record<string, unknown>))
+        .withContext('remoteName is resolved by base URL, not by the manifest key')
+        .toBeFalse();
+      expect(calls[0]).toEqual({ remoteEntry: ENTRY, exposedModule: './routes' });
+    });
+
+    it('DEFAULT_DEPS.loadRemote IS `defaultLoadRemote` (the real loadRemoteModule composition), not a lookalike', () => {
+      // Reference equality, not behavioral: a hand-reverted inline arrow at
+      // the DEFAULT_DEPS callsite is a DIFFERENT closure even if it happens
+      // to read similarly, so this fails the moment the wiring is bypassed.
+      expect(DEFAULT_DEPS.loadRemote).toBe(defaultLoadRemote);
     });
   });
 });
