@@ -2,6 +2,8 @@ import { Injectable, inject, signal } from '@angular/core';
 import { MatrixService } from '../matrix.service';
 import { AmplitudeMouthService, MouthDrive } from '../vn/voice/amplitude-mouth.service';
 import { SpeakingDetector } from '../vn/voice/speaking';
+import { MatrixRtcService, RtcGroupSession } from '../rtc/matrix-rtc.service';
+import { chooseGroupCallRoute } from '../rtc/matrix-rtc';
 import {
   AV_CHANNEL_LABEL, BLENDSHAPES_BROADCAST_MS, JAW_OPEN_INDEX, POSE_BROADCAST_MS,
   decodeAvFrame, dequantizeBlendshape, encodeBlendshapesFrame, encodePoseFrame,
@@ -53,6 +55,17 @@ import {
  * join; when the relay is dark the voice mesh is host/LAN-only and
  * {@link turnAvailable} drives the note (turnAvailable precedent). A refused
  * mic keeps the member in the mesh listen-only, with the reason surfaced.
+ *
+ * ABOVE THE CAP — MatrixRTC (hugmesh-admin-bff-api#98, decision 102a = A):
+ * when the dark {@link MatrixRtcService.enabled} flag is ON and the roster
+ * grows past `maxParticipants`, the mesh asks the homeserver for a LiveKit
+ * focus. With one advertised it joins the room's MatrixRTC call and moves
+ * voice AND the av-channel frames onto that SFU session (one upstream instead
+ * of N-1; everyone admitted); with none it keeps the peer-to-peer cap and
+ * {@link routeNote} says why. The move is STICKY for the join — a roster that
+ * dips back under the cap does not reconnect, so a room hovering at the cap
+ * cannot flap between transports every 1Hz tick. With the flag OFF (the
+ * default) none of this runs and the mesh is byte-for-byte the p2p mesh above.
  */
 
 /** Mesh size (roster incl. me) at which the full-mesh quality warning shows —
@@ -183,6 +196,7 @@ export interface QuantizedBlendshapes { values: Uint8Array; ts: number }
 export class MeshCallService {
   private readonly matrix = inject(MatrixService);
   private readonly mouth = inject(AmplitudeMouthService);
+  private readonly rtc = inject(MatrixRtcService);
 
   // ── Injection seams (specs assign fakes; defaults are the real APIs) ──
 
@@ -258,6 +272,14 @@ export class MeshCallService {
   readonly staleInviteNote = signal('');
   /** Per-pair connection states for the host UI. */
   readonly peerStates = signal<Record<string, MeshPeerConnState>>({});
+  /** Which transport voice + motion run on: the p2p mesh, or the MatrixRTC
+   *  SFU session (only ever 'sfu' with the MatrixRTC flag on). */
+  readonly transport = signal<'p2p' | 'sfu'>('p2p');
+  /** WHY the call is (or is not) on the SFU above the cap ('' otherwise). */
+  readonly routeNote = signal('');
+  /** WHY other MatrixRTC clients will not list me in the call ('' when the
+   *  membership event published, or no SFU call is joined). */
+  readonly callMemberNote = signal('');
 
   // ── Internals ──
 
@@ -292,6 +314,10 @@ export class MeshCallService {
   /** userId → ms clock of the hangup we received (re-offer cooldown). */
   private readonly hangupCooldown = new Map<string, number>();
   private signalTimer: ReturnType<typeof setInterval> | null = null;
+  /** The joined MatrixRTC SFU session (null = p2p mesh). */
+  private sfu: RtcGroupSession | null = null;
+  /** True once this join tried (or is trying) the SFU route — see class doc. */
+  private sfuAttempted = false;
   private poseTimer: ReturnType<typeof setInterval> | null = null;
   private blendTimer: ReturnType<typeof setInterval> | null = null;
   private samplerTimer: ReturnType<typeof setInterval> | null = null;
@@ -321,6 +347,9 @@ export class MeshCallService {
     this.myPartyId = `p${Math.random().toString(36).slice(2, 10)}`;
     this.micWanted = opts.micEnabled;
     this.maxParticipants = opts.maxParticipants ?? 8;
+    this.sfuAttempted = false;
+    this.routeNote.set('');
+    this.callMemberNote.set('');
     this.active.set(true);
     const token = ++this.joinToken;
     this.settingUp = true;
@@ -425,6 +454,17 @@ export class MeshCallService {
     }
     this.signalTimer = this.poseTimer = this.blendTimer = this.samplerTimer = null;
     const hangups: Promise<unknown>[] = [];
+    // The SFU leg: disconnect AND clear my call-membership state event — the
+    // kill switch reaches this through the same leave() as a normal exit.
+    const sfu = this.sfu;
+    this.sfu = null;
+    if (sfu) {
+      hangups.push(sfu.leave());
+    }
+    this.transport.set('p2p');
+    this.routeNote.set('');
+    this.callMemberNote.set('');
+    this.sfuAttempted = false;
     for (const peer of this.peers.values()) {
       if (peer.callId && (peer.state === 'connecting' || peer.state === 'connected')) {
         hangups.push(this.sendSignal('m.call.hangup', {
@@ -473,8 +513,15 @@ export class MeshCallService {
     if (!this.active() || this.settingUp) {
       return;
     }
+    if (this.sfu) {
+      this.applySfuRoster();
+      return;
+    }
     const admitted = this.admittedSet();
     const rosterSize = new Set([...this.participants, this.myUserId]).size;
+    if (this.rtc.enabled && !this.sfuAttempted && rosterSize > this.maxParticipants) {
+      void this.routeAboveCap();
+    }
     this.meshWarning.set(rosterSize >= MESH_WARNING_SIZE);
     const meAdmitted = admitted.has(this.myUserId);
     this.admitted.set(meAdmitted);
@@ -506,6 +553,145 @@ export class MeshCallService {
         void this.offerTo(userId);
       } else {
         this.peers.set(userId, this.newPeer(userId, '', 'connecting'));
+      }
+    }
+    this.publishPeerStates();
+  }
+
+  // ─────────────────────────── Above the cap: MatrixRTC ───────────────────────────
+
+  /** Roster size including me (the number the cap is compared against). */
+  private rosterSize(): number {
+    return new Set([...this.participants, this.myUserId]).size;
+  }
+
+  /**
+   * The roster just exceeded the p2p cap with the MatrixRTC flag on: find a
+   * focus and, if there is one, move this join onto the SFU. Runs at most once
+   * per join unless the roster fell back under the cap before it decided.
+   * Every await re-checks the join token — a leave()/join() cycle mid-flight
+   * must not adopt (or leak) a session for the room it already left.
+   */
+  private async routeAboveCap(): Promise<void> {
+    this.sfuAttempted = true;
+    const token = this.joinToken;
+    const focus = await this.rtc.discoverFocus();
+    if (!this.active() || this.joinToken !== token) {
+      return;
+    }
+    const cap = this.maxParticipants;
+    const size = this.rosterSize();
+    const route = chooseGroupCallRoute({ enabled: this.rtc.enabled, focus, rosterSize: size, p2pCap: cap });
+    if (route.transport === 'p2p') {
+      if (route.reason === 'no-focus') {
+        this.routeNote.set(
+          `This room has ${size} participants, more than the peer-to-peer voice cap of ${cap}. `
+          + 'The homeserver advertises no group-call media server (MatrixRTC focus), so voice and '
+          + `live motion stay peer-to-peer and only the first ${cap} participants get them.`);
+      } else {
+        this.sfuAttempted = false; // back under the cap while we looked — decide again later
+      }
+      return;
+    }
+    const res = await this.rtc.join(this.roomId, this.myUserId, route.focus);
+    if (!this.active() || this.joinToken !== token) {
+      if (res.ok) {
+        void res.session.leave();
+      }
+      return;
+    }
+    if (!res.ok) {
+      this.routeNote.set(
+        `This room has ${size} participants, more than the peer-to-peer voice cap of ${cap}, but joining `
+        + `the group-call media server failed (${res.step === 'openid' ? 'the homeserver refused an identity token'
+          : res.step === 'token' ? 'the media server refused a join token' : 'the media server connection failed'}). `
+        + `Voice stays peer-to-peer, so only the first ${cap} participants get it.`);
+      return;
+    }
+    this.switchToSfu(res.session, res.membershipPublished, size, cap);
+  }
+
+  /** Tear the p2p pairs down (real hangups, like leave()) and run on `session`. */
+  private switchToSfu(session: RtcGroupSession, membershipPublished: boolean, size: number, cap: number): void {
+    if (this.signalTimer !== null) {
+      clearInterval(this.signalTimer); // no more m.call.* answering on the SFU path
+      this.signalTimer = null;
+    }
+    for (const peer of this.peers.values()) {
+      if (peer.callId && (peer.state === 'connecting' || peer.state === 'connected')) {
+        void this.sendSignal('m.call.hangup', {
+          call_id: peer.callId, party_id: this.myPartyId, version: CALL_VERSION, reason: 'user_hangup',
+        });
+      }
+      this.closePeer(peer);
+    }
+    this.peers.clear();
+    this.sfu = session;
+    this.transport.set('sfu');
+    session.onPeerAudio = (userId, stream) => {
+      const peer = this.sfuPeer(userId);
+      if (peer) {
+        this.attachRemoteStream(peer, stream);
+      }
+    };
+    session.onData = (userId, frame) => {
+      const peer = this.sfuPeer(userId);
+      if (peer) {
+        this.handleChannelFrame(peer, frame);
+      }
+    };
+    session.onPeerLeft = (userId) => this.dropSfuPeer(userId);
+    session.onDisconnected = () => this.routeNote.set(
+      'The connection to the group-call media server dropped — leave and re-enter the 3D room to restore voice.');
+    const micTrack = this.localStream?.getAudioTracks()[0];
+    if (micTrack) {
+      void session.publishMic(micTrack).catch(() => this.micNote.set(
+        'Your microphone could not be published to the group-call media server — you are in the room listen-only.'));
+    }
+    this.routeNote.set(
+      `This room has ${size} participants, more than the peer-to-peer voice cap of ${cap}, so voice and `
+      + 'live motion now run through the group-call media server (MatrixRTC / LiveKit).');
+    this.callMemberNote.set(membershipPublished ? '' : 'This room does not let members announce a call '
+      + '(org.matrix.msc3401.call.member needs a lower power level), so other Matrix call apps will not list you in it.');
+    this.applySfuRoster();
+  }
+
+  /**
+   * The SFU peer entry for `userId`, created on first contact — or null for a
+   * stranger. The SFU room admits anyone lk-jwt-service minted a token for,
+   * which is NOT the same set as this room's 3D roster (membership-bound by
+   * the host); a non-roster identity must not conjure an avatar in the game
+   * or an audio sink on this page.
+   */
+  private sfuPeer(userId: string): MeshPeer | null {
+    if (userId === this.myUserId || !this.participants.includes(userId)) {
+      return null;
+    }
+    let peer = this.peers.get(userId);
+    if (!peer) {
+      peer = this.newPeer(userId, '', 'connected');
+      this.peers.set(userId, peer);
+      this.publishPeerStates();
+    }
+    return peer;
+  }
+
+  private dropSfuPeer(userId: string): void {
+    const peer = this.peers.get(userId);
+    if (peer) {
+      this.closePeer(peer);
+      this.peers.delete(userId);
+      this.publishPeerStates();
+    }
+  }
+
+  /** On the SFU everyone is admitted and nothing strains; departed members' sinks close. */
+  private applySfuRoster(): void {
+    this.admitted.set(true);
+    this.meshWarning.set(false);
+    for (const userId of [...this.peers.keys()]) {
+      if (!this.participants.includes(userId)) {
+        this.dropSfuPeer(userId);
       }
     }
     this.publishPeerStates();
@@ -590,7 +776,7 @@ export class MeshCallService {
    * first so an invite lands before its trailing candidates.
    */
   async pumpOnce(): Promise<void> {
-    if (!this.active()) {
+    if (!this.active() || this.sfu) {
       return;
     }
     const all = await this.matrix.roomEvents(this.roomId).catch(() => []);
@@ -922,6 +1108,10 @@ export class MeshCallService {
   }
 
   private broadcast(frame: ArrayBuffer): void {
+    if (this.sfu) {
+      this.sfu.sendData(frame); // one publish reaches every SFU participant
+      return;
+    }
     for (const peer of this.peers.values()) {
       if (peer.channel && peer.channel.readyState === 'open') {
         try {

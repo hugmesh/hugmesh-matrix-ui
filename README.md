@@ -125,6 +125,37 @@ signalling.
 > **LAN/local-only**, byte-identical to the prior host-only behaviour. Calls work
 > on the local network / same homeserver; cross-NAT and federated A/V await the
 > server-side relay.
+>
+> **Group calls above the peer-to-peer cap — MatrixRTC, slice 1 (DARK).** The
+> platform picked Matrix-native group calls (MatrixRTC with a LiveKit SFU,
+> Element Call's model; decision 102a) and scheduled them for launch (102b) —
+> tracked on hugmesh-admin-bff-api#98. This repo now carries the **client half
+> only**, behind `__HUG_MATRIX_RTC__` (default **off**; with it off nothing
+> below makes a request and every call path is unchanged). `rtc/` holds
+> `MatrixRtcService`: it reads the LiveKit focus from the client well-known
+> (`org.matrix.msc4143.rtc_foci`, `https:` only, same-origin
+> `/.well-known/matrix/client` by default, `__HUG_MATRIX_RTC_WELLKNOWN_URL__` to
+> override), gets an OpenID token through the hsproxy, trades it at that
+> lk-jwt-service's `POST /sfu/get` for a LiveKit JWT (cookies omitted — another
+> origin), connects with `livekit-client` (lazy-loaded; its shared federation
+> bundle is only fetched on this path) and publishes/clears an
+> `org.matrix.msc3401.call.member` state event under a synthetic per-session
+> device id. Only the chat3d voice mesh routes to it, and only when the 3D roster
+> exceeds the room's cap (next section). The 1:1 `m.call.*` call screen is
+> untouched. **The server half is not built** — a LiveKit SFU and lk-jwt-service
+> as a default-off optional service, their key/secret in the ESO/Vault pattern,
+> and tuwunel advertising the focus via `[[global.well_known.rtc_transports]]`
+> are the generator's deferred gen-livekit lane — so on every mesh today
+> discovery finds no focus and group voice stays peer-to-peer with a note
+> saying so. Two known gaps ride with it: rooms give `state_default: 50`, so
+> ordinary members cannot publish the call-membership event until room setup
+> grants `org.matrix.msc3401.call.member` a lower power level (the call still
+> works; a note says other Matrix call apps will not list you), and
+> lk-jwt-service's legacy endpoint does not check room membership, so the SFU
+> room admits any identity it minted a token for — this client only renders
+> audio/motion from members of the room's 3D roster, but cannot stop a stranger
+> listening; the application-service mode (MSC4195, `rooms:is_joined`) is the
+> server lane's fix.
 
 ## VN character render, stickers & character voice
 
@@ -248,6 +279,22 @@ drive + `SpeakingDetector`, so every mouth animates even with no camera
 anywhere; a peer's fresh blendshapes `jawOpen` outranks amplitude. The
 host/LAN-only TURN honesty note and the ≥8-participant mesh-strain warning ride
 the same capability-note pattern as the calls.
+
+**Above the cap (MatrixRTC flag on only).** When `__HUG_MATRIX_RTC__` is on and
+the 3D roster exceeds the room's `maxParticipants` (the peer-to-peer cap, 2..16,
+default 8), the mesh asks for a LiveKit focus. With one advertised it hangs up
+its pairs, joins the room's MatrixRTC call and runs voice (the already-captured
+mic track) and the same av-channel frames (one lossy `publishData` per tick)
+over the SFU — everyone admitted, no strain warning, no TURN note (the media
+server owns ICE), and a note naming why. With **no focus** it keeps the p2p cap
+and admission unchanged and the note says the homeserver advertises no
+group-call media server, so only the first *cap* participants get voice. The
+move is **sticky for the join** (a roster hovering at the cap cannot flap
+between transports); the kill switch and leaving the view disconnect the SFU
+and clear the membership event through the same `leave()`. SFU identities
+outside the room's 3D roster (or my own other tab) are ignored. Every client of
+one deployment shares the flag, so they route alike; a client whose SFU join
+fails stays p2p with the failing step in its note.
 
 **Desktop-first face tracking (`FaceTrackService`)** — opt-in camera only
 (join-menu toggle), MediaPipe FaceLandmarker running in a Web Worker
