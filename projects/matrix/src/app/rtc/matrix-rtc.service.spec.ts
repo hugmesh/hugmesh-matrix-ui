@@ -1,7 +1,10 @@
 import { TestBed } from '@angular/core/testing';
 import { BFF_BASE_URL, MatrixService } from '../matrix.service';
 import { CALL_MEMBER_EVENT_TYPE, MATRIX_RTC_ENABLED, MATRIX_RTC_WELLKNOWN_URL, RTC_FOCI_WELLKNOWN_KEY } from './matrix-rtc';
-import { MAX_RTC_DATA_FRAME_BYTES, MatrixRtcService, RtcRoomLike } from './matrix-rtc.service';
+import {
+  MAX_RTC_DATA_FRAME_BYTES, MAX_RTC_DEVICE_SLOTS, MatrixRtcService, RTC_DEVICE_BASE_STORAGE_KEY,
+  RTC_DEVICE_SLOT_LOCK_PREFIX, RtcLockManagerLike, RtcRoomLike,
+} from './matrix-rtc.service';
 
 const FOCUS = { type: 'livekit' as const, livekit_service_url: 'https://rtc.example.test/livekit/jwt' };
 const OPENID = { access_token: 'oid-tok', token_type: 'Bearer', matrix_server_name: 'example.test', expires_in: 3600 };
@@ -62,6 +65,28 @@ class MatrixStub {
   setStateEvent = jasmine.createSpy('setStateEvent').and.resolveTo('$m1');
 }
 
+/** A Web Locks manager with the real `ifAvailable` contract: a held name hands the callback null. */
+class FakeLocks implements RtcLockManagerLike {
+  held = new Set<string>();
+  request(name: string, _opts: { ifAvailable: boolean }, cb: (lock: unknown) => Promise<void> | undefined): Promise<unknown> {
+    if (this.held.has(name)) {
+      return Promise.resolve(cb(null));
+    }
+    this.held.add(name);
+    return Promise.resolve(cb({ name })).finally(() => this.held.delete(name));
+  }
+}
+
+class FakeStorage {
+  map = new Map<string, string>();
+  getItem(k: string): string | null {
+    return this.map.get(k) ?? null;
+  }
+  setItem(k: string, v: string): void {
+    this.map.set(k, v);
+  }
+}
+
 const WELL_KNOWN = '/.well-known/matrix/client';
 const OPENID_URL = '/bff/user/matrix/_matrix/client/v3/user/@alice:example.test/openid/request_token';
 const SFU_GET = 'https://rtc.example.test/livekit/jwt/sfu/get';
@@ -71,6 +96,7 @@ describe('MatrixRtcService (discovery → OpenID → LiveKit JWT → connect →
   let fake: FakeFetch;
   let room: FakeRoom;
   let matrix: MatrixStub;
+  let releases: number;
 
   function setup(enabled: boolean): void {
     fake = new FakeFetch();
@@ -89,6 +115,8 @@ describe('MatrixRtcService (discovery → OpenID → LiveKit JWT → connect →
     svc.roomFactory = async () => room;
     svc.streamFromTrack = (t) => ({ fakeStreamOf: t }) as unknown as MediaStream;
     svc.deviceIdFactory = () => 'HUGRTCDEV1';
+    releases = 0;
+    svc.claimDeviceId = async () => ({ id: 'HUGRTCDEV1', release: () => void releases++ });
   }
 
   function happyPath(): void {
@@ -188,6 +216,7 @@ describe('MatrixRtcService (discovery → OpenID → LiveKit JWT → connect →
       expect(room.disconnects).toBe(1);
       expect(matrix.setStateEvent).toHaveBeenCalledOnceWith(
         '!r:example.test', CALL_MEMBER_EVENT_TYPE, {}, '_@alice:example.test_HUGRTCDEV1_m.call');
+      expect(releases).withContext('device slot released once, on leave').toBe(1);
     });
 
     it('join: a REFUSED membership publish (power levels) keeps the call and says so', async () => {
@@ -213,6 +242,8 @@ describe('MatrixRtcService (discovery → OpenID → LiveKit JWT → connect →
       expect(await svc.join('!r', '@alice:example.test', FOCUS)).toEqual({ ok: false, step: 'connect' });
       expect(room.disconnects).toBe(1);
       expect(matrix.setStateEvent).not.toHaveBeenCalled();
+      // openid failed before a claim; token + connect failures each released theirs.
+      expect(releases).toBe(2);
     });
 
     describe('the joined session', () => {
@@ -234,6 +265,31 @@ describe('MatrixRtcService (discovery → OpenID → LiveKit JWT → connect →
         room.emit('trackSubscribed', { kind: 'video', mediaStreamTrack: track }, {}, { identity: '@bob:example.test:DEVB' });
         room.emit('trackSubscribed', { kind: 'audio', mediaStreamTrack: track }, {}, { identity: 'mallory' });
         expect(got).toEqual([['@bob:example.test', { fakeStreamOf: track }]]);
+      });
+
+      it('RETAINS remote audio that arrives before a consumer handler exists; newest wins; forgotten on unsubscribe/leave', async () => {
+        const session = await joined();
+        expect(session.onPeerAudio).toBeNull();
+        const t1 = { id: 't1' } as unknown as MediaStreamTrack;
+        const t2 = { id: 't2' } as unknown as MediaStreamTrack;
+        room.emit('trackSubscribed', { kind: 'audio', mediaStreamTrack: t1 }, {}, { identity: '@bob:example.test:DEVB' });
+        expect(session.remoteAudio('@bob:example.test')).toEqual({ fakeStreamOf: t1 } as unknown as MediaStream);
+        // A second device of the same user: its newer stream is the one handed out.
+        room.emit('trackSubscribed', { kind: 'audio', mediaStreamTrack: t2 }, {}, { identity: '@bob:example.test:DEVC' });
+        expect(session.remoteAudio('@bob:example.test')).toEqual({ fakeStreamOf: t2 } as unknown as MediaStream);
+        // Unsubscribing an OLD track of that identity does not forget a newer one.
+        room.emit('trackUnsubscribed', { kind: 'audio', mediaStreamTrack: t1 }, {}, { identity: '@bob:example.test:DEVC' });
+        expect(session.remoteAudio('@bob:example.test')).toEqual({ fakeStreamOf: t2 } as unknown as MediaStream);
+        room.emit('trackUnsubscribed', { kind: 'audio', mediaStreamTrack: t2 }, {}, { identity: '@bob:example.test:DEVC' });
+        expect(session.remoteAudio('@bob:example.test')).toEqual({ fakeStreamOf: t1 } as unknown as MediaStream);
+        room.emit('participantDisconnected', { identity: '@bob:example.test:DEVB' });
+        expect(session.remoteAudio('@bob:example.test')).toBeNull();
+        room.emit('trackSubscribed', { kind: 'audio', mediaStreamTrack: t1 }, {}, { identity: '@carol:example.test:D' });
+        await session.leave();
+        expect(session.remoteAudio('@carol:example.test')).toBeNull();
+        room.emit('trackSubscribed', { kind: 'audio', mediaStreamTrack: t1 }, {}, { identity: '@carol:example.test:D' });
+        expect(session.remoteAudio('@carol:example.test')).withContext('nothing retained after leave').toBeNull();
+        expect(session.remoteAudio('@nobody:example.test')).toBeNull();
       });
 
       it('data frames: copied out as an ArrayBuffer, oversized/serverside/non-bytes dropped', async () => {
@@ -274,5 +330,102 @@ describe('MatrixRtcService (discovery → OpenID → LiveKit JWT → connect →
         expect(dropped).toBe(1);
       });
     });
+  });
+});
+
+describe('MatrixRtcService.claimDeviceId (bounded membership state keys, refute major)', () => {
+  let svc: MatrixRtcService;
+  let store: FakeStorage;
+  let locks: FakeLocks;
+  let seq: number;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: MatrixService, useValue: new MatrixStub() },
+        { provide: BFF_BASE_URL, useValue: '' },
+        { provide: MATRIX_RTC_ENABLED, useValue: true },
+      ],
+    });
+    svc = TestBed.inject(MatrixRtcService);
+    store = new FakeStorage();
+    locks = new FakeLocks();
+    seq = 0;
+    svc.deviceIdFactory = () => `HUGRTCRND${++seq}AAAA`;
+    svc.storageFn = () => store;
+    svc.locksFn = () => locks;
+  });
+
+  it('REUSES one id across joins: a stable stored base + the lowest free slot', async () => {
+    const a = await svc.claimDeviceId();
+    expect(a.id).toBe('HUGRTCRND1AAAA0');
+    expect(store.getItem(RTC_DEVICE_BASE_STORAGE_KEY)).toBe('HUGRTCRND1AAAA');
+    a.release();
+    await new Promise((r) => setTimeout(r, 0));
+    const b = await svc.claimDeviceId();
+    expect(b.id).withContext('the next join reuses the SAME state key').toBe(a.id);
+    b.release();
+  });
+
+  it('two live tabs never share an id (the slot is held); a freed slot is reused', async () => {
+    const a = await svc.claimDeviceId();
+    const b = await svc.claimDeviceId();
+    expect(a.id).toBe('HUGRTCRND1AAAA0');
+    expect(b.id).toBe('HUGRTCRND1AAAA1');
+    expect(locks.held).toEqual(new Set([`${RTC_DEVICE_SLOT_LOCK_PREFIX}0`, `${RTC_DEVICE_SLOT_LOCK_PREFIX}1`]));
+    a.release();
+    await new Promise((r) => setTimeout(r, 0));
+    const c = await svc.claimDeviceId();
+    expect(c.id).toBe('HUGRTCRND1AAAA0');
+  });
+
+  it('BOUNDED: at most MAX_RTC_DEVICE_SLOTS stable ids; beyond that a one-off id', async () => {
+    const ids: string[] = [];
+    for (let i = 0; i < MAX_RTC_DEVICE_SLOTS; i++) {
+      ids.push((await svc.claimDeviceId()).id);
+    }
+    expect(new Set(ids).size).toBe(MAX_RTC_DEVICE_SLOTS);
+    expect(ids.every((id) => id.startsWith('HUGRTCRND1AAAA'))).toBeTrue();
+    const extra = await svc.claimDeviceId();
+    expect(extra.id).toBe('HUGRTCRND2AAAA');
+  });
+
+  it('a stored base that is not id-shaped is replaced, not trusted', async () => {
+    store.setItem(RTC_DEVICE_BASE_STORAGE_KEY, 'x"y/../');
+    expect((await svc.claimDeviceId()).id).toBe('HUGRTCRND1AAAA0');
+  });
+
+  it('no storage, a throwing storage, a write-dropping storage or no Web Locks: a one-off id, no-op release', async () => {
+    svc.storageFn = () => null;
+    expect((await svc.claimDeviceId()).id).toBe('HUGRTCRND1AAAA');
+    svc.storageFn = () => {
+      throw new Error('SecurityError');
+    };
+    expect((await svc.claimDeviceId()).id).toBe('HUGRTCRND2AAAA');
+    svc.storageFn = () => ({ getItem: () => null, setItem: () => undefined });
+    expect((await svc.claimDeviceId()).id).toBe('HUGRTCRND4AAAA'); // RND3 was the dropped seed
+    svc.storageFn = () => store;
+    svc.locksFn = () => null;
+    const c = await svc.claimDeviceId();
+    expect(c.id).toBe('HUGRTCRND6AAAA'); // RND5 seeded the base
+    expect(() => c.release()).not.toThrow();
+  });
+
+  it('the REAL browser Web Locks API fits the narrowed contract (two claims, two slots, release frees)', async () => {
+    svc.locksFn = () => ((navigator as unknown as { locks?: RtcLockManagerLike }).locks) ?? null;
+    if (!svc.locksFn()) {
+      pending('navigator.locks unavailable in this browser');
+      return;
+    }
+    const a = await svc.claimDeviceId();
+    const b = await svc.claimDeviceId();
+    expect(a.id).toBe('HUGRTCRND1AAAA0');
+    expect(b.id).toBe('HUGRTCRND1AAAA1');
+    a.release();
+    b.release();
+    await new Promise((r) => setTimeout(r, 0));
+    const c = await svc.claimDeviceId();
+    expect(c.id).toBe('HUGRTCRND1AAAA0');
+    c.release();
   });
 });

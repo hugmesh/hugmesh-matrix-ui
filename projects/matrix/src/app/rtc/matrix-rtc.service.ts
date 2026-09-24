@@ -15,6 +15,7 @@ import {
  * never firing.
  */
 const EV_TRACK_SUBSCRIBED: `${RoomEvent.TrackSubscribed}` = 'trackSubscribed';
+const EV_TRACK_UNSUBSCRIBED: `${RoomEvent.TrackUnsubscribed}` = 'trackUnsubscribed';
 const EV_PARTICIPANT_DISCONNECTED: `${RoomEvent.ParticipantDisconnected}` = 'participantDisconnected';
 const EV_DATA_RECEIVED: `${RoomEvent.DataReceived}` = 'dataReceived';
 const EV_DISCONNECTED: `${RoomEvent.Disconnected}` = 'disconnected';
@@ -23,6 +24,41 @@ const EV_DISCONNECTED: `${RoomEvent.Disconnected}` = 'disconnected';
  *  17 (pose), 53 (blendshapes) and 2 (speaking) bytes; anything bigger is not
  *  ours and is dropped before it is copied. */
 export const MAX_RTC_DATA_FRAME_BYTES = 256;
+
+/**
+ * LIMIT: device-id slots per browser profile. Every join publishes its
+ * membership under a state key that embeds the device id, and a state key,
+ * once written, stays in the room's state for good (leave only blanks it to
+ * `{}`) — while every chat3d client re-reads the FULL room state at 1Hz. So
+ * the id must be REUSED across joins: a stable per-browser base (localStorage)
+ * plus the lowest free slot, claimed with a Web Lock held for the call's
+ * lifetime so two open tabs of one user never share an id (a shared LiveKit
+ * identity would kick the other tab out of the SFU room). That bounds the keys
+ * one user leaves in a room to this many per browser profile; only a fifth
+ * simultaneous tab (or a browser with no storage / no Web Locks) falls back
+ * to a one-off id.
+ */
+export const MAX_RTC_DEVICE_SLOTS = 4;
+
+/** localStorage key holding this browser's stable device-id base. */
+export const RTC_DEVICE_BASE_STORAGE_KEY = 'hug.matrixRtc.deviceBase';
+
+/** Web Lock name prefix for a device-id slot (suffix = slot index). */
+export const RTC_DEVICE_SLOT_LOCK_PREFIX = 'hug-matrix-rtc-device-slot-';
+
+/** The shape a generated device id (and so a stored base) must have. */
+const DEVICE_BASE_RE = /^HUGRTC[A-Z0-9]{4,12}$/;
+
+/** A claimed device id; `release` frees its slot (idempotent). */
+export interface RtcDeviceClaim {
+  id: string;
+  release: () => void;
+}
+
+/** The narrowed Web Locks surface the slot claim uses (fakeable). */
+export interface RtcLockManagerLike {
+  request(name: string, opts: { ifAvailable: boolean }, cb: (lock: unknown) => Promise<void> | undefined): Promise<unknown>;
+}
 
 /** The narrowed LiveKit remote participant surface (fakeable). */
 export interface RtcParticipantLike {
@@ -56,6 +92,16 @@ export interface RtcGroupSession {
   readonly focus: LivekitFocus;
   /** A remote participant's audio arrived (one stream per subscribed track). */
   onPeerAudio: ((userId: string, stream: MediaStream) => void) | null;
+  /**
+   * The newest subscribed remote audio stream for `userId`, or null. LiveKit
+   * fires TrackSubscribed ONCE per subscription, so a stream that arrives
+   * before the consumer can place it (its handler not yet installed, or the
+   * sender not yet on the 3D roster) would otherwise be lost for good and the
+   * sender permanently silent. The session RETAINS it until the track is
+   * unsubscribed or its participant leaves, and the consumer attaches it
+   * whenever it (re)creates that peer.
+   */
+  remoteAudio(userId: string): MediaStream | null;
   /** A remote participant left the SFU room. */
   onPeerLeft: ((userId: string) => void) | null;
   /** A data frame (chat3d av-channel bytes) arrived from a participant. */
@@ -82,21 +128,37 @@ class LivekitGroupSession implements RtcGroupSession {
   onData: ((userId: string, frame: ArrayBuffer) => void) | null = null;
   onDisconnected: (() => void) | null = null;
   private left = false;
+  /** LiveKit identity → its newest subscribed audio (see remoteAudio). */
+  private readonly audio = new Map<string, { userId: string; track: MediaStreamTrack; stream: MediaStream; seq: number }>();
+  private audioSeq = 0;
 
   constructor(
     private readonly room: RtcRoomLike,
     readonly focus: LivekitFocus,
     private readonly streamFromTrack: (track: MediaStreamTrack) => MediaStream,
     private readonly clearMembership: () => Promise<void>,
+    private readonly releaseDevice: () => void = () => undefined,
   ) {
     room.on(EV_TRACK_SUBSCRIBED, (track: RtcTrackLike, _publication: unknown, participant: RtcParticipantLike) => {
       const userId = userIdFromIdentity(participant?.identity);
-      if (!userId || track?.kind !== 'audio' || !track.mediaStreamTrack) {
+      if (this.left || !userId || track?.kind !== 'audio' || !track.mediaStreamTrack) {
         return;
       }
-      this.onPeerAudio?.(userId, this.streamFromTrack(track.mediaStreamTrack));
+      const stream = this.streamFromTrack(track.mediaStreamTrack);
+      // Retain FIRST: this event is never re-delivered (see remoteAudio).
+      this.audio.set(String(participant.identity), { userId, track: track.mediaStreamTrack, stream, seq: ++this.audioSeq });
+      this.onPeerAudio?.(userId, stream);
+    });
+    room.on(EV_TRACK_UNSUBSCRIBED, (track: RtcTrackLike, _publication: unknown, participant: RtcParticipantLike) => {
+      const key = typeof participant?.identity === 'string' ? participant.identity : '';
+      if (this.audio.get(key)?.track === track?.mediaStreamTrack) {
+        this.audio.delete(key);
+      }
     });
     room.on(EV_PARTICIPANT_DISCONNECTED, (participant: RtcParticipantLike) => {
+      if (typeof participant?.identity === 'string') {
+        this.audio.delete(participant.identity);
+      }
       const userId = userIdFromIdentity(participant?.identity);
       if (userId) {
         this.onPeerLeft?.(userId);
@@ -119,6 +181,16 @@ class LivekitGroupSession implements RtcGroupSession {
     });
   }
 
+  remoteAudio(userId: string): MediaStream | null {
+    let best: { stream: MediaStream; seq: number } | null = null;
+    for (const a of this.audio.values()) {
+      if (a.userId === userId && (!best || a.seq > best.seq)) {
+        best = a;
+      }
+    }
+    return best?.stream ?? null;
+  }
+
   async publishMic(track: MediaStreamTrack): Promise<void> {
     await this.room.localParticipant.publishTrack(track);
   }
@@ -135,7 +207,12 @@ class LivekitGroupSession implements RtcGroupSession {
       return;
     }
     this.left = true;
-    await Promise.allSettled([this.room.disconnect(), this.clearMembership()]);
+    this.audio.clear();
+    try {
+      await Promise.allSettled([this.room.disconnect(), this.clearMembership()]);
+    } finally {
+      this.releaseDevice();
+    }
   }
 }
 
@@ -159,10 +236,13 @@ class LivekitGroupSession implements RtcGroupSession {
  * returns null without a request, and nothing else here is reachable.
  *
  * DEVICE ID: the browser holds no Matrix device of its own (the BFF holds the
- * homeserver token), so each join mints a synthetic per-session device id. It
- * keys the membership state event and the LiveKit identity only; it is the
- * "claimed" half lk-jwt-service does not verify, and two tabs of one user get
- * two ids instead of kicking each other out of the SFU room.
+ * homeserver token), so a synthetic device id keys the membership state event
+ * and the LiveKit identity. It is the "claimed" half lk-jwt-service does not
+ * verify. It is REUSED across joins — a stable per-browser base plus a slot
+ * claimed with a Web Lock ({@link claimDeviceId}, {@link MAX_RTC_DEVICE_SLOTS})
+ * — because each distinct id leaves a permanent state key in the room; two
+ * open tabs of one user still hold two slots, so they never kick each other
+ * out of the SFU room.
  */
 @Injectable({ providedIn: 'root' })
 export class MatrixRtcService {
@@ -181,7 +261,84 @@ export class MatrixRtcService {
     return new lk.Room() as unknown as RtcRoomLike;
   };
   streamFromTrack: (track: MediaStreamTrack) => MediaStream = (track) => new MediaStream([track]);
-  deviceIdFactory: () => string = () => `HUGRTC${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
+  /** A fresh random id — the stored base's seed, and the no-slot fallback. */
+  deviceIdFactory: () => string = () => `HUGRTC${Math.random().toString(36).slice(2, 10).toUpperCase().padEnd(8, '0')}`;
+  /** The per-browser store for the device-id base (null = none usable). */
+  storageFn: () => Pick<Storage, 'getItem' | 'setItem'> | null = () => {
+    try {
+      return globalThis.localStorage ?? null;
+    } catch {
+      return null;
+    }
+  };
+  /** The Web Locks manager for slot claims (null = unsupported). */
+  locksFn: () => RtcLockManagerLike | null = () => {
+    try {
+      return ((globalThis.navigator as unknown as { locks?: RtcLockManagerLike } | undefined)?.locks) ?? null;
+    } catch {
+      return null;
+    }
+  };
+
+  /**
+   * The device id for one join: `${stable base}${lowest free slot}`, the slot
+   * held (Web Lock) until `release()` — see {@link MAX_RTC_DEVICE_SLOTS}. With
+   * no usable storage, no Web Locks, or every slot held by other tabs, a
+   * one-off random id (the old per-join behaviour) with a no-op release.
+   */
+  async claimDeviceId(): Promise<RtcDeviceClaim> {
+    const base = this.deviceBase();
+    const locks = base ? this.locksFn() : null;
+    if (base && locks) {
+      for (let slot = 0; slot < MAX_RTC_DEVICE_SLOTS; slot++) {
+        const release = await this.tryLock(locks, `${RTC_DEVICE_SLOT_LOCK_PREFIX}${slot}`);
+        if (release) {
+          return { id: `${base}${slot}`, release };
+        }
+      }
+    }
+    return { id: this.deviceIdFactory(), release: () => undefined };
+  }
+
+  /** The stored base, seeded on first use; null when storage is unusable. */
+  private deviceBase(): string | null {
+    try {
+      const store = this.storageFn();
+      if (!store) {
+        return null;
+      }
+      const stored = store.getItem(RTC_DEVICE_BASE_STORAGE_KEY);
+      if (stored && DEVICE_BASE_RE.test(stored)) {
+        return stored;
+      }
+      const fresh = this.deviceIdFactory();
+      if (!DEVICE_BASE_RE.test(fresh)) {
+        return null;
+      }
+      store.setItem(RTC_DEVICE_BASE_STORAGE_KEY, fresh);
+      // Read back: a store that silently drops writes must not hand out a
+      // "stable" base that is new on every join.
+      return store.getItem(RTC_DEVICE_BASE_STORAGE_KEY) === fresh ? fresh : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Try to take the named lock without waiting; resolves its release, or null. */
+  private tryLock(locks: RtcLockManagerLike, name: string): Promise<(() => void) | null> {
+    return new Promise((resolve) => {
+      let release!: () => void;
+      const held = new Promise<void>((r) => (release = r));
+      locks.request(name, { ifAvailable: true }, (lock) => {
+        if (!lock) {
+          resolve(null);
+          return undefined;
+        }
+        resolve(release);
+        return held; // the lock is held until release() settles this
+      }).catch(() => resolve(null));
+    });
+  }
 
   /**
    * The first usable LiveKit focus the homeserver advertises, or null when
@@ -279,15 +436,18 @@ export class MatrixRtcService {
     if (!openid) {
       return { ok: false, step: 'openid' };
     }
-    const deviceId = this.deviceIdFactory();
+    const claim = await this.claimDeviceId();
+    const deviceId = claim.id;
     const sfu = await this.requestSfuToken(focus, roomId, openid, deviceId);
     if (!sfu) {
+      claim.release();
       return { ok: false, step: 'token' };
     }
     let room: RtcRoomLike | null = null;
     try {
       room = await this.roomFactory();
     } catch {
+      claim.release();
       return { ok: false, step: 'connect' };
     }
     const stateKey = callMemberStateKey(userId, deviceId);
@@ -296,11 +456,12 @@ export class MatrixRtcService {
       if (published) {
         await this.matrix.setStateEvent(roomId, CALL_MEMBER_EVENT_TYPE, {}, stateKey).catch(() => '');
       }
-    });
+    }, claim.release);
     try {
       await room.connect(sfu.url, sfu.jwt);
     } catch {
       await room.disconnect().catch(() => undefined);
+      claim.release();
       return { ok: false, step: 'connect' };
     }
     try {

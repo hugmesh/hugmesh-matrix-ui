@@ -139,8 +139,11 @@ signalling.
 > lk-jwt-service's `POST /sfu/get` for a LiveKit JWT (cookies omitted — another
 > origin), connects with `livekit-client` (lazy-loaded; its shared federation
 > bundle is only fetched on this path) and publishes/clears an
-> `org.matrix.msc3401.call.member` state event under a synthetic per-session
-> device id. Only the chat3d voice mesh routes to it, and only when the 3D roster
+> `org.matrix.msc3401.call.member` state event under a synthetic device id that
+> is REUSED across joins (a stable per-browser base in localStorage plus a slot
+> claimed with a Web Lock, at most 4 per browser profile) — each distinct id
+> leaves a permanent state key in the room, which every chat3d client re-reads
+> at 1Hz, so a fresh id per join would grow that without bound. Only the chat3d voice mesh routes to it, and only when the 3D roster
 > exceeds the room's cap (next section). The 1:1 `m.call.*` call screen is
 > untouched. **The server half is not built** — a LiveKit SFU and lk-jwt-service
 > as a default-off optional service, their key/secret in the ESO/Vault pattern,
@@ -289,12 +292,18 @@ over the SFU — everyone admitted, no strain warning, no TURN note (the media
 server owns ICE), and a note naming why. With **no focus** it keeps the p2p cap
 and admission unchanged and the note says the homeserver advertises no
 group-call media server, so only the first *cap* participants get voice. The
-move is **sticky for the join** (a roster hovering at the cap cannot flap
-between transports); the kill switch and leaving the view disconnect the SFU
-and clear the membership event through the same `leave()`. SFU identities
-outside the room's 3D roster (or my own other tab) are ignored. Every client of
-one deployment shares the flag, so they route alike; a client whose SFU join
-fails stays p2p with the failing step in its note.
+route is a pure function of the shared roster (roster > cap means SFU) in both
+directions, so a newcomer who arrives after the room moved lands on the same
+transport as everyone else; leaving the SFU waits for 3 consecutive roster
+polls at or under the cap (`SFU_FALLBACK_TICKS`) so a one-poll dip cannot flap
+the room, then restarts the `m.call.*` pump and re-forms the pairs. The kill
+switch and leaving the view disconnect the SFU and clear the membership event
+through the same `leave()`. SFU identities outside the room's 3D roster (or my
+own other tab) are ignored; remote audio that arrives before its sender is on
+the roster is retained by the session and attached when they appear. Every
+client of one deployment shares the flag, so they route alike; a client whose
+SFU join fails stays p2p with the failing step in its note, and the note says
+the others have most likely moved, so it may hear no one until it re-enters.
 
 **Desktop-first face tracking (`FaceTrackService`)** — opt-in camera only
 (join-menu toggle), MediaPipe FaceLandmarker running in a Web Worker

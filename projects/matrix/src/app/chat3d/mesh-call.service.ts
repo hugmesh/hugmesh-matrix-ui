@@ -62,11 +62,25 @@ import {
  * focus. With one advertised it joins the room's MatrixRTC call and moves
  * voice AND the av-channel frames onto that SFU session (one upstream instead
  * of N-1; everyone admitted); with none it keeps the peer-to-peer cap and
- * {@link routeNote} says why. The move is STICKY for the join — a roster that
- * dips back under the cap does not reconnect, so a room hovering at the cap
- * cannot flap between transports every 1Hz tick. With the flag OFF (the
- * default) none of this runs and the mesh is byte-for-byte the p2p mesh above.
+ * {@link routeNote} says why. The route is a pure function of the SHARED
+ * roster (roster > cap ⇒ SFU), in BOTH directions, so every client — including
+ * one that arrives after the room moved — converges on the same transport: a
+ * "sticky for the join" rule stranded a newcomer who saw 8 of 8 on the p2p
+ * mesh, inviting clients that had stopped answering. Leaving the SFU is
+ * debounced ({@link SFU_FALLBACK_TICKS} consecutive at-or-under-cap rosters)
+ * so a one-poll dip cannot flap the whole room between transports. With the
+ * flag OFF (the default) none of this runs and the mesh is byte-for-byte the
+ * p2p mesh above.
  */
+
+/**
+ * Consecutive roster ticks (the host's 1Hz poll) at or under the cap before
+ * an SFU call falls back to the peer-to-peer mesh. Short enough that a
+ * newcomer's invites are still fresh ({@link INVITE_LIFETIME_MS}) when the
+ * returning clients' signalling pump restarts; long enough that one poll's
+ * blip does not tear every connection down.
+ */
+export const SFU_FALLBACK_TICKS = 3;
 
 /** Mesh size (roster incl. me) at which the full-mesh quality warning shows —
  *  N-1 upstreams per member makes ~8 the practical voice ceiling (DESIGN §6). */
@@ -316,8 +330,13 @@ export class MeshCallService {
   private signalTimer: ReturnType<typeof setInterval> | null = null;
   /** The joined MatrixRTC SFU session (null = p2p mesh). */
   private sfu: RtcGroupSession | null = null;
-  /** True once this join tried (or is trying) the SFU route — see class doc. */
-  private sfuAttempted = false;
+  /** A focus discovery / SFU join is in flight for this join. */
+  private routeInFlight = false;
+  /** This over-cap episode already ended in no-focus or a failed join; re-armed
+   *  once the roster is back at or under the cap. */
+  private routeSettled = false;
+  /** Consecutive roster ticks at/under the cap while on the SFU. */
+  private sfuUnderCapTicks = 0;
   private poseTimer: ReturnType<typeof setInterval> | null = null;
   private blendTimer: ReturnType<typeof setInterval> | null = null;
   private samplerTimer: ReturnType<typeof setInterval> | null = null;
@@ -347,7 +366,9 @@ export class MeshCallService {
     this.myPartyId = `p${Math.random().toString(36).slice(2, 10)}`;
     this.micWanted = opts.micEnabled;
     this.maxParticipants = opts.maxParticipants ?? 8;
-    this.sfuAttempted = false;
+    this.routeInFlight = false;
+    this.routeSettled = false;
+    this.sfuUnderCapTicks = 0;
     this.routeNote.set('');
     this.callMemberNote.set('');
     this.active.set(true);
@@ -428,6 +449,19 @@ export class MeshCallService {
       return;
     }
     this.participants = [...new Set(userIds.filter((u) => typeof u === 'string' && u.startsWith('@')))];
+    // Fall back from the SFU once the room has stayed at/under the cap for
+    // SFU_FALLBACK_TICKS consecutive rosters (counted HERE, once per poll —
+    // setMaxParticipants also re-applies the roster every poll).
+    if (this.sfu && !this.settingUp) {
+      if (this.rosterSize() <= this.maxParticipants) {
+        if (++this.sfuUnderCapTicks >= SFU_FALLBACK_TICKS) {
+          this.leaveSfu();
+          return;
+        }
+      } else {
+        this.sfuUnderCapTicks = 0;
+      }
+    }
     this.applyRoster();
   }
 
@@ -459,12 +493,15 @@ export class MeshCallService {
     const sfu = this.sfu;
     this.sfu = null;
     if (sfu) {
+      this.detachSfu(sfu);
       hangups.push(sfu.leave());
     }
     this.transport.set('p2p');
     this.routeNote.set('');
     this.callMemberNote.set('');
-    this.sfuAttempted = false;
+    this.routeInFlight = false;
+    this.routeSettled = false;
+    this.sfuUnderCapTicks = 0;
     for (const peer of this.peers.values()) {
       if (peer.callId && (peer.state === 'connecting' || peer.state === 'connected')) {
         hangups.push(this.sendSignal('m.call.hangup', {
@@ -519,8 +556,17 @@ export class MeshCallService {
     }
     const admitted = this.admittedSet();
     const rosterSize = new Set([...this.participants, this.myUserId]).size;
-    if (this.rtc.enabled && !this.sfuAttempted && rosterSize > this.maxParticipants) {
-      void this.routeAboveCap();
+    if (this.rtc.enabled) {
+      if (rosterSize > this.maxParticipants) {
+        if (!this.routeInFlight && !this.routeSettled) {
+          void this.routeAboveCap();
+        }
+      } else if (this.routeSettled) {
+        // Back at/under the cap: the no-focus / failed-join note no longer
+        // describes this room, and a later rise decides afresh.
+        this.routeSettled = false;
+        this.routeNote.set('');
+      }
     }
     this.meshWarning.set(rosterSize >= MESH_WARNING_SIZE);
     const meAdmitted = admitted.has(this.myUserId);
@@ -567,14 +613,25 @@ export class MeshCallService {
 
   /**
    * The roster just exceeded the p2p cap with the MatrixRTC flag on: find a
-   * focus and, if there is one, move this join onto the SFU. Runs at most once
-   * per join unless the roster fell back under the cap before it decided.
-   * Every await re-checks the join token — a leave()/join() cycle mid-flight
-   * must not adopt (or leak) a session for the room it already left.
+   * focus and, if there is one, move this join onto the SFU. One attempt per
+   * over-cap episode: no-focus and a failed join settle it until the roster is
+   * back at/under the cap. Every await re-checks the join token — a
+   * leave()/join() cycle mid-flight must not adopt (or leak) a session for the
+   * room it already left.
    */
   private async routeAboveCap(): Promise<void> {
-    this.sfuAttempted = true;
     const token = this.joinToken;
+    this.routeInFlight = true;
+    try {
+      await this.routeAboveCapOnce(token);
+    } finally {
+      if (this.joinToken === token) {
+        this.routeInFlight = false;
+      }
+    }
+  }
+
+  private async routeAboveCapOnce(token: number): Promise<void> {
     const focus = await this.rtc.discoverFocus();
     if (!this.active() || this.joinToken !== token) {
       return;
@@ -584,13 +641,14 @@ export class MeshCallService {
     const route = chooseGroupCallRoute({ enabled: this.rtc.enabled, focus, rosterSize: size, p2pCap: cap });
     if (route.transport === 'p2p') {
       if (route.reason === 'no-focus') {
+        this.routeSettled = true;
         this.routeNote.set(
           `This room has ${size} participants, more than the peer-to-peer voice cap of ${cap}. `
           + 'The homeserver advertises no group-call media server (MatrixRTC focus), so voice and '
           + `live motion stay peer-to-peer and only the first ${cap} participants get them.`);
-      } else {
-        this.sfuAttempted = false; // back under the cap while we looked — decide again later
       }
+      // within-cap: back under the cap while we looked — the next over-cap
+      // roster decides again (routeSettled stays false).
       return;
     }
     const res = await this.rtc.join(this.roomId, this.myUserId, route.focus);
@@ -601,11 +659,16 @@ export class MeshCallService {
       return;
     }
     if (!res.ok) {
+      this.routeSettled = true;
+      // NOT "only the first N get it": every other client of this deployment
+      // made the same over-cap decision and is on the media server now, so
+      // this client's peer-to-peer mesh most likely reaches nobody.
       this.routeNote.set(
         `This room has ${size} participants, more than the peer-to-peer voice cap of ${cap}, but joining `
         + `the group-call media server failed (${res.step === 'openid' ? 'the homeserver refused an identity token'
           : res.step === 'token' ? 'the media server refused a join token' : 'the media server connection failed'}). `
-        + `Voice stays peer-to-peer, so only the first ${cap} participants get it.`);
+        + 'The others in this room have most likely moved to it, so you may hear no one and no one may hear you '
+        + '— leave and re-enter the 3D room to try again.');
       return;
     }
     this.switchToSfu(res.session, res.membershipPublished, size, cap);
@@ -627,22 +690,42 @@ export class MeshCallService {
     }
     this.peers.clear();
     this.sfu = session;
+    this.sfuUnderCapTicks = 0;
     this.transport.set('sfu');
+    // Every handler checks it still belongs to the CURRENT session: a late
+    // event from a session we already left must not conjure a peer.
     session.onPeerAudio = (userId, stream) => {
+      if (this.sfu !== session) {
+        return;
+      }
+      const isNew = !this.peers.has(userId);
       const peer = this.sfuPeer(userId);
-      if (peer) {
+      // A NEW peer already got the session's retained stream (this one) from
+      // sfuPeer — attaching again would build a second sink.
+      if (peer && !(isNew && peer.audioEl)) {
         this.attachRemoteStream(peer, stream);
       }
     };
     session.onData = (userId, frame) => {
+      if (this.sfu !== session) {
+        return;
+      }
       const peer = this.sfuPeer(userId);
       if (peer) {
         this.handleChannelFrame(peer, frame);
       }
     };
-    session.onPeerLeft = (userId) => this.dropSfuPeer(userId);
-    session.onDisconnected = () => this.routeNote.set(
-      'The connection to the group-call media server dropped — leave and re-enter the 3D room to restore voice.');
+    session.onPeerLeft = (userId) => {
+      if (this.sfu === session) {
+        this.dropSfuPeer(userId);
+      }
+    };
+    session.onDisconnected = () => {
+      if (this.sfu === session) {
+        this.routeNote.set(
+          'The connection to the group-call media server dropped — leave and re-enter the 3D room to restore voice.');
+      }
+    };
     const micTrack = this.localStream?.getAudioTracks()[0];
     if (micTrack) {
       void session.publishMic(micTrack).catch(() => this.micNote.set(
@@ -664,13 +747,20 @@ export class MeshCallService {
    * or an audio sink on this page.
    */
   private sfuPeer(userId: string): MeshPeer | null {
-    if (userId === this.myUserId || !this.participants.includes(userId)) {
+    if (!this.sfu || userId === this.myUserId || !this.participants.includes(userId)) {
       return null;
     }
     let peer = this.peers.get(userId);
     if (!peer) {
       peer = this.newPeer(userId, '', 'connected');
       this.peers.set(userId, peer);
+      // LiveKit delivers each remote track ONCE: audio that arrived while this
+      // member was not (yet, or for one poll) on the roster was retained by
+      // the session — attach it now, or they stay silent for the whole call.
+      const retained = this.sfu.remoteAudio(userId);
+      if (retained) {
+        this.attachRemoteStream(peer, retained);
+      }
       this.publishPeerStates();
     }
     return peer;
@@ -685,7 +775,11 @@ export class MeshCallService {
     }
   }
 
-  /** On the SFU everyone is admitted and nothing strains; departed members' sinks close. */
+  /**
+   * On the SFU everyone is admitted and nothing strains; departed members'
+   * sinks close, and a roster member whose audio the session already holds
+   * (it arrived before they were on the roster) gets a peer + sink now.
+   */
   private applySfuRoster(): void {
     this.admitted.set(true);
     this.meshWarning.set(false);
@@ -694,7 +788,51 @@ export class MeshCallService {
         this.dropSfuPeer(userId);
       }
     }
+    for (const userId of this.participants) {
+      if (!this.peers.has(userId) && this.sfu?.remoteAudio(userId)) {
+        this.sfuPeer(userId);
+      }
+    }
     this.publishPeerStates();
+  }
+
+  /** Stop routing a session's events here (it is being left). */
+  private detachSfu(session: RtcGroupSession): void {
+    session.onPeerAudio = null;
+    session.onData = null;
+    session.onPeerLeft = null;
+    session.onDisconnected = null;
+  }
+
+  /**
+   * Back to the peer-to-peer mesh: the room has stayed at/under the cap for
+   * {@link SFU_FALLBACK_TICKS} rosters. Leaves the SFU (which clears the
+   * call-membership event), closes the SFU sinks, restarts the m.call pump and
+   * re-forms the pairs — exactly what a client that never left p2p is doing,
+   * so both converge. The pre-SFU hangup cooldowns are dropped: those hangups
+   * were transport moves, not members choosing to leave a pair.
+   */
+  private leaveSfu(): void {
+    const sfu = this.sfu;
+    this.sfu = null;
+    if (sfu) {
+      this.detachSfu(sfu);
+      void sfu.leave();
+    }
+    for (const peer of this.peers.values()) {
+      this.closePeer(peer);
+    }
+    this.peers.clear();
+    this.hangupCooldown.clear();
+    this.transport.set('p2p');
+    this.routeNote.set('');
+    this.callMemberNote.set('');
+    this.routeSettled = false;
+    this.sfuUnderCapTicks = 0;
+    if (this.signalTimer === null) {
+      this.signalTimer = setInterval(() => void this.pumpOnce(), MESH_SIGNAL_POLL_MS);
+    }
+    this.applyRoster();
   }
 
   /** The pair rule: the lexicographically LOWER mxid sends the offer. */
