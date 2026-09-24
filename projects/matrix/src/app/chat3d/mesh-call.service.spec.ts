@@ -4,12 +4,14 @@ import { MatrixService } from '../matrix.service';
 import {
   INVITE_CLOCK_SKEW_MS, INVITE_LIFETIME_MS, MAX_INVITE_LIFETIME_MS,
   MAX_QUEUED_CANDIDATES, MESH_CALL_ID_PREFIX, MeshCallService, MeshChannelLike,
-  MeshPcLike, REOFFER_COOLDOWN_MS,
+  MeshPcLike, REOFFER_COOLDOWN_MS, SFU_FALLBACK_TICKS,
 } from './mesh-call.service';
 import {
   BLENDSHAPE_COUNT, JAW_OPEN_INDEX, encodeBlendshapesFrame, encodePoseFrame,
   encodeSpeakingFrame, FRAME_SPEAKING,
 } from './av-channel';
+import { MatrixRtcService, RtcGroupSession, RtcJoinResult } from '../rtc/matrix-rtc.service';
+import { LivekitFocus } from '../rtc/matrix-rtc';
 
 class FakeChannel implements MeshChannelLike {
   readyState = 'open';
@@ -796,5 +798,470 @@ describe('MeshCallService (full-mesh legacy m.call signalling + chat3d data chan
     expect(svc.micLive()).toBeFalse();
     expect((localTracks[0] as unknown as { stop: jasmine.Spy }).stop).toHaveBeenCalled();
     expect(svc.peerStates()).toEqual({});
+  });
+});
+
+/** A scripted MatrixRtcService: the flag, the advertised focus, the join outcome. */
+class RtcStub {
+  enabled = true;
+  focus: LivekitFocus | null = { type: 'livekit', livekit_service_url: 'https://rtc.test/livekit/jwt' };
+  discoverFocus = jasmine.createSpy('discoverFocus').and.callFake(async () => this.focus);
+  joinResult: () => RtcJoinResult = () => ({ ok: true, session: this.session, membershipPublished: true });
+  join = jasmine.createSpy('join').and.callFake(async () => this.joinResult());
+  session = new FakeSession();
+}
+
+class FakeSession implements RtcGroupSession {
+  readonly focus: LivekitFocus = { type: 'livekit', livekit_service_url: 'https://rtc.test/livekit/jwt' };
+  onPeerAudio: ((userId: string, stream: MediaStream) => void) | null = null;
+  onPeerLeft: ((userId: string) => void) | null = null;
+  onData: ((userId: string, frame: ArrayBuffer) => void) | null = null;
+  onDisconnected: (() => void) | null = null;
+  sent: ArrayBuffer[] = [];
+  mics: MediaStreamTrack[] = [];
+  /** What the real session retains per user (LivekitGroupSession.remoteAudio). */
+  audio = new Map<string, MediaStream>();
+  leave = jasmine.createSpy('leave').and.resolveTo(undefined);
+  remoteAudio(userId: string): MediaStream | null {
+    return this.audio.get(userId) ?? null;
+  }
+  /** A TrackSubscribed as the real session surfaces it: retained, THEN handed on (if a handler is set). */
+  deliverAudio(userId: string, stream: MediaStream): void {
+    this.audio.set(userId, stream);
+    this.onPeerAudio?.(userId, stream);
+  }
+  async publishMic(track: MediaStreamTrack): Promise<void> {
+    this.mics.push(track);
+  }
+  sendData(frame: ArrayBuffer): void {
+    this.sent.push(frame);
+  }
+}
+
+/** A longer flush for the routing chain (discover → join → switch). */
+async function settle(): Promise<void> {
+  for (let i = 0; i < 30; i++) {
+    await Promise.resolve();
+  }
+}
+
+/** Nine sorted mxids: me first, so I am the p2p initiator for every pair. */
+const ROOM_OF_9 = ['@b1:test', '@b2:test', '@b3:test', '@b4:test', '@b5:test', '@b6:test', '@b7:test', '@b8:test'];
+
+describe('MeshCallService above the p2p cap (MatrixRTC route, hugmesh-admin-bff-api#98)', () => {
+  let svc: MeshCallService;
+  let matrix: MatrixStub;
+  let rtc: RtcStub;
+  let pcs: FakePc[];
+  let localTracks: MediaStreamTrack[];
+  const sinks: { stream: unknown; remove: jasmine.Spy }[] = [];
+
+  beforeEach(() => {
+    matrix = new MatrixStub();
+    rtc = new RtcStub();
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: MatrixService, useValue: matrix },
+        { provide: MatrixRtcService, useValue: rtc },
+      ],
+    });
+    svc = TestBed.inject(MeshCallService);
+    pcs = [];
+    sinks.length = 0;
+    localTracks = [({ enabled: true, stop: jasmine.createSpy('stop') }) as unknown as MediaStreamTrack];
+    svc.pcFactory = (config) => {
+      const pc = new FakePc(config);
+      pcs.push(pc);
+      return pc;
+    };
+    svc.mediaFactory = async () => ({
+      getTracks: () => localTracks,
+      getAudioTracks: () => localTracks,
+    }) as unknown as MediaStream;
+    svc.audioSinkFactory = (stream) => {
+      const sink = { srcObject: null, stream, remove: jasmine.createSpy('remove') };
+      sinks.push(sink);
+      return sink;
+    };
+    svc.driveFactory = () => ({ openness: signal(0), stop: jasmine.createSpy('stop') });
+  });
+
+  afterEach(async () => {
+    await svc.leave();
+  });
+
+  function sentSignals(type: string): Record<string, unknown>[] {
+    return matrix.sendEvent.calls.allArgs().filter((a) => a[1] === type).map((a) => a[2] as Record<string, unknown>);
+  }
+
+  it('AT the cap (8 of 8) stays peer-to-peer and never asks for a focus', async () => {
+    await svc.join('!r:test', ME, { micEnabled: false, maxParticipants: 8 });
+    svc.setParticipants(ROOM_OF_9.slice(0, 7));
+    await settle();
+    expect(rtc.discoverFocus).not.toHaveBeenCalled();
+    expect(svc.transport()).toBe('p2p');
+    expect(sentSignals('m.call.invite').length).toBe(7);
+  });
+
+  it('CAP + 1 participants → the SFU path: p2p pairs hung up, voice + motion move to the session', async () => {
+    await svc.join('!r:test', ME, { micEnabled: true, maxParticipants: 8 });
+    svc.setParticipants(ROOM_OF_9);
+    await settle();
+    expect(rtc.discoverFocus).toHaveBeenCalledTimes(1);
+    expect(rtc.join).toHaveBeenCalledOnceWith('!r:test', ME, rtc.focus);
+    expect(svc.transport()).toBe('sfu');
+    // Every pair the p2p mesh had opened got a real hangup and a closed pc.
+    expect(sentSignals('m.call.hangup').length).toBe(sentSignals('m.call.invite').length);
+    expect(pcs.every((pc) => pc.closed)).toBeTrue();
+    expect(svc.peerStates()).toEqual({});
+    // Everyone is admitted on the SFU, nothing strains, and the note says why.
+    expect(svc.admitted()).toBeTrue();
+    expect(svc.meshWarning()).toBeFalse();
+    expect(svc.routeNote()).toContain('9 participants');
+    expect(svc.routeNote()).toContain('peer-to-peer voice cap of 8');
+    expect(svc.routeNote()).toContain('media server');
+    expect(svc.callMemberNote()).toBe('');
+    // The ALREADY-captured mic is published — no second capture.
+    expect(rtc.session.mics).toEqual([localTracks[0]]);
+  });
+
+  it('on the SFU: remote audio gets a sink + drive, frames decode, my broadcast is ONE publish', async () => {
+    await svc.join('!r:test', ME, { micEnabled: false, maxParticipants: 8 });
+    svc.setParticipants(ROOM_OF_9);
+    await settle();
+    const poses: [string, unknown][] = [];
+    svc.onPeerPose = (u, p) => poses.push([u, p]);
+    const stream = { id: 'remote' } as unknown as MediaStream;
+    rtc.session.onPeerAudio!('@b3:test', stream);
+    expect(sinks.map((x) => x.stream)).toEqual([stream]);
+    expect(svc.peerStates()).toEqual({ '@b3:test': 'connected' });
+    rtc.session.onData!('@b3:test', encodePoseFrame(1, 2, 0, 3));
+    expect(poses).toEqual([['@b3:test', { x: 1, z: 2, yaw: 0, seat: 3 }]]);
+    svc.poseProvider = () => ({ x: 0, z: 0, yaw: 0, seat: 1 });
+    svc.tickPose();
+    expect(rtc.session.sent.length).toBe(1);
+    expect(pcs.every((pc) => pc.channels.every((c) => c.sent.length === 0))).toBeTrue();
+  });
+
+  it('on the SFU: a stranger outside the 3D roster (or my own other tab) conjures NOTHING', async () => {
+    await svc.join('!r:test', ME, { micEnabled: false, maxParticipants: 8 });
+    svc.setParticipants(ROOM_OF_9);
+    await settle();
+    const poses: string[] = [];
+    svc.onPeerPose = (u) => poses.push(u);
+    rtc.session.onPeerAudio!('@mallory:test', {} as MediaStream);
+    rtc.session.onData!('@mallory:test', encodePoseFrame(1, 2, 0, 3));
+    rtc.session.onPeerAudio!(ME, {} as MediaStream);
+    expect(sinks.length).toBe(0);
+    expect(poses).toEqual([]);
+    expect(svc.peerStates()).toEqual({});
+  });
+
+  it('on the SFU the m.call pump is OFF — an inbound invite is not answered', async () => {
+    await svc.join('!r:test', ME, { micEnabled: false, maxParticipants: 8 });
+    svc.setParticipants(ROOM_OF_9);
+    await settle();
+    matrix.roomEvents.calls.reset();
+    await svc.pumpOnce();
+    expect(matrix.roomEvents).not.toHaveBeenCalled();
+  });
+
+  it('DEBOUNCED: a dip under the cap for fewer than SFU_FALLBACK_TICKS rosters does not flap; departed sinks close', async () => {
+    expect(SFU_FALLBACK_TICKS).toBe(3);
+    await svc.join('!r:test', ME, { micEnabled: false, maxParticipants: 8 });
+    svc.setParticipants(ROOM_OF_9);
+    await settle();
+    rtc.session.onPeerAudio!('@b8:test', {} as MediaStream);
+    for (let i = 0; i < SFU_FALLBACK_TICKS - 1; i++) {
+      svc.setParticipants(ROOM_OF_9.slice(0, 3));
+      await settle();
+    }
+    expect(svc.transport()).toBe('sfu');
+    expect(rtc.session.leave).not.toHaveBeenCalled();
+    expect(sinks[0].remove).toHaveBeenCalled();
+    expect(svc.peerStates()).toEqual({});
+    // Back over the cap resets the count: two more dips still do not fall back.
+    svc.setParticipants(ROOM_OF_9);
+    for (let i = 0; i < SFU_FALLBACK_TICKS - 1; i++) {
+      svc.setParticipants(ROOM_OF_9.slice(0, 3));
+    }
+    await settle();
+    expect(svc.transport()).toBe('sfu');
+    expect(rtc.join).toHaveBeenCalledTimes(1);
+  });
+
+  it('FALLS BACK after SFU_FALLBACK_TICKS rosters at the cap: SFU left, pump back on, p2p pairs re-form', async () => {
+    await svc.join('!r:test', ME, { micEnabled: false, maxParticipants: 8 });
+    svc.setParticipants(ROOM_OF_9);
+    await settle();
+    rtc.session.onPeerAudio!('@b1:test', {} as MediaStream);
+    const internals = svc as unknown as { signalTimer: unknown; hangupCooldown: Map<string, number> };
+    expect(internals.signalTimer).withContext('no m.call pump on the SFU').toBeNull();
+    // A hangup cooldown left from the move TO the SFU (a transport move, not a
+    // member leaving the pair) must not delay re-forming that pair.
+    internals.hangupCooldown.set('@b1:test', Date.now());
+    matrix.sendEvent.calls.reset();
+    const eight = ROOM_OF_9.slice(0, 7); // + me = 8 of 8
+    for (let i = 0; i < SFU_FALLBACK_TICKS; i++) {
+      svc.setParticipants(eight);
+      await settle();
+    }
+    expect(svc.transport()).toBe('p2p');
+    expect(rtc.session.leave).toHaveBeenCalledTimes(1); // which clears the membership event
+    expect(sinks[0].remove).toHaveBeenCalled();
+    expect(svc.routeNote()).toBe('');
+    expect(svc.callMemberNote()).toBe('');
+    // I am the lowest mxid, so I re-offer to all seven — what a newcomer that
+    // arrived at 8 of 8 (and never left p2p) is waiting for.
+    expect(sentSignals('m.call.invite').map((c) => c['invitee']).sort()).toEqual([...eight].sort());
+    // The m.call pump answers again — its timer restarted, too.
+    expect(internals.signalTimer).not.toBeNull();
+    matrix.roomEvents.calls.reset();
+    await svc.pumpOnce();
+    expect(matrix.roomEvents).toHaveBeenCalled();
+    // A late event from the session we left conjures nothing.
+    rtc.session.onPeerAudio?.('@b2:test', {} as MediaStream);
+    expect(sinks.length).toBe(1);
+  });
+
+  it('SPLIT-BRAIN (refute major): a newcomer\'s fresh invite, sent while this client was still on the SFU, is answered after the fall-back', async () => {
+    // Me = @b5 (NOT the initiator towards the newcomer @a0). The room had 9 on
+    // the SFU, two left, a newcomer arrived at 8 of 8 and stayed p2p.
+    svc.now = () => SERVER_NOW;
+    await svc.join('!r:test', '@b5:test', { micEnabled: false, maxParticipants: 8 });
+    const nine = [ME, '@b1:test', '@b2:test', '@b3:test', '@b4:test', '@b6:test', '@b7:test', '@b8:test'];
+    svc.setParticipants(nine);
+    await settle();
+    expect(svc.transport()).toBe('sfu');
+    const withNewcomer = ['@a0:test', '@b1:test', '@b2:test', '@b3:test', '@b4:test', '@b6:test', '@b7:test'];
+    // The newcomer's invite lands during the debounce window.
+    matrix.roomEvents.and.resolveTo([callEvent('m.call.invite', '@a0:test', {
+      call_id: `${MESH_CALL_ID_PREFIX}new1`, party_id: 'pN', version: 1, lifetime: INVITE_LIFETIME_MS,
+      invitee: '@b5:test', offer: { type: 'offer', sdp: 'newcomer-sdp' },
+    })]);
+    await svc.pumpOnce(); // still on the SFU: not answered
+    expect(sentSignals('m.call.answer').length).toBe(0);
+    for (let i = 0; i < SFU_FALLBACK_TICKS; i++) {
+      svc.setParticipants(withNewcomer);
+      await settle();
+    }
+    expect(svc.transport()).toBe('p2p');
+    await svc.pumpOnce();
+    await settle();
+    const answers = sentSignals('m.call.answer');
+    expect(answers.length).toBe(1);
+    expect(answers[0]['call_id']).toBe(`${MESH_CALL_ID_PREFIX}new1`);
+    expect(svc.staleInviteNote()).toBe('');
+  });
+
+  it('PROBE-1 (refute major): audio that arrives BEFORE the sender is on the roster is attached once they are', async () => {
+    await svc.join('!r:test', ME, { micEnabled: false, maxParticipants: 8 });
+    svc.setParticipants(ROOM_OF_9);
+    await settle();
+    const stream = { id: 'c9-voice' } as unknown as MediaStream;
+    rtc.session.deliverAudio('@c9:test', stream); // not on the roster yet
+    expect(sinks.length).toBe(0);
+    svc.setParticipants([...ROOM_OF_9, '@c9:test']);
+    await settle();
+    expect(sinks.map((x) => x.stream)).toEqual([stream]);
+    expect(svc.peerStates()['@c9:test']).toBe('connected');
+    // A pose frame afterwards does not build a second sink.
+    rtc.session.onData!('@c9:test', encodePoseFrame(1, 2, 0, 3));
+    expect(sinks.length).toBe(1);
+  });
+
+  it('PROBE-2 (refute major): a one-poll roster blip re-attaches the SAME retained audio when the member returns', async () => {
+    await svc.join('!r:test', ME, { micEnabled: false, maxParticipants: 8 });
+    const ten = [...ROOM_OF_9, '@c9:test'];
+    svc.setParticipants(ten);
+    await settle();
+    const stream = { id: 'b3-voice' } as unknown as MediaStream;
+    rtc.session.deliverAudio('@b3:test', stream);
+    expect(sinks.map((x) => x.stream)).toEqual([stream]);
+    svc.setParticipants(ten.filter((u) => u !== '@b3:test')); // blip: still 9, still over the cap
+    await settle();
+    expect(sinks[0].remove).toHaveBeenCalled();
+    svc.setParticipants(ten);
+    await settle();
+    expect(sinks.map((x) => x.stream)).toEqual([stream, stream]);
+    expect(sinks[1].remove).not.toHaveBeenCalled();
+  });
+
+  it('audio the session retained BEFORE the switch (the join\'s membership round-trip window) is attached on switch', async () => {
+    const early = { id: 'early' } as unknown as MediaStream;
+    rtc.session.audio.set('@b2:test', early); // TrackSubscribed fired while onPeerAudio was still null
+    await svc.join('!r:test', ME, { micEnabled: false, maxParticipants: 8 });
+    svc.setParticipants(ROOM_OF_9);
+    await settle();
+    expect(svc.transport()).toBe('sfu');
+    expect(sinks.map((x) => x.stream)).toEqual([early]);
+    expect(svc.peerStates()).toEqual({ '@b2:test': 'connected' });
+  });
+
+  it('a participant leaving the SFU (still on the 3D roster) has its sink closed', async () => {
+    await svc.join('!r:test', ME, { micEnabled: false, maxParticipants: 8 });
+    svc.setParticipants(ROOM_OF_9);
+    await settle();
+    rtc.session.deliverAudio('@b4:test', {} as MediaStream);
+    rtc.session.audio.delete('@b4:test');
+    rtc.session.onPeerLeft!('@b4:test');
+    expect(sinks[0].remove).toHaveBeenCalled();
+    expect(svc.peerStates()).toEqual({});
+  });
+
+  it('an unrequested SFU disconnect says so in the route note', async () => {
+    await svc.join('!r:test', ME, { micEnabled: false, maxParticipants: 8 });
+    svc.setParticipants(ROOM_OF_9);
+    await settle();
+    rtc.session.onDisconnected!();
+    expect(svc.routeNote()).toContain('media server dropped');
+  });
+
+  it('a leave() while focus discovery is in flight never joins the SFU', async () => {
+    let releaseFocus!: (f: LivekitFocus | null) => void;
+    rtc.discoverFocus.and.callFake(() => new Promise<LivekitFocus | null>((res) => (releaseFocus = res)));
+    await svc.join('!r:test', ME, { micEnabled: false, maxParticipants: 8 });
+    svc.setParticipants(ROOM_OF_9);
+    await settle();
+    await svc.leave();
+    releaseFocus(rtc.focus);
+    await settle();
+    expect(rtc.join).not.toHaveBeenCalled();
+    expect(svc.transport()).toBe('p2p');
+  });
+
+  it('back under the cap during discovery: stays p2p, and a later rise decides afresh', async () => {
+    let releaseFocus!: (f: LivekitFocus | null) => void;
+    rtc.discoverFocus.and.callFake(() => new Promise<LivekitFocus | null>((res) => (releaseFocus = res)));
+    await svc.join('!r:test', ME, { micEnabled: false, maxParticipants: 8 });
+    svc.setParticipants(ROOM_OF_9);
+    await settle();
+    svc.setParticipants(ROOM_OF_9); // another over-cap tick while discovery is in flight
+    await settle();
+    expect(rtc.discoverFocus).withContext('one discovery in flight at a time').toHaveBeenCalledTimes(1);
+    svc.setParticipants(ROOM_OF_9.slice(0, 7));
+    releaseFocus(rtc.focus);
+    await settle();
+    expect(rtc.join).not.toHaveBeenCalled();
+    expect(svc.transport()).toBe('p2p');
+    rtc.discoverFocus.and.callFake(async () => rtc.focus);
+    svc.setParticipants(ROOM_OF_9);
+    await settle();
+    expect(rtc.join).toHaveBeenCalledTimes(1);
+    expect(svc.transport()).toBe('sfu');
+  });
+
+  it('NO FOCUS advertised → keeps the p2p cap and says why in the UI note', async () => {
+    rtc.focus = null;
+    await svc.join('!r:test', ME, { micEnabled: false, maxParticipants: 8 });
+    svc.setParticipants(ROOM_OF_9);
+    await settle();
+    expect(rtc.join).not.toHaveBeenCalled();
+    expect(svc.transport()).toBe('p2p');
+    // p2p admission is unchanged: I am in the first 8, so 7 pairs formed.
+    expect(sentSignals('m.call.invite').length).toBe(7);
+    expect(sentSignals('m.call.hangup').length).toBe(0);
+    expect(svc.routeNote()).toContain('9 participants');
+    expect(svc.routeNote()).toContain('advertises no group-call media server');
+    expect(svc.routeNote()).toContain('only the first 8');
+    // It asked ONCE for this over-cap episode, not on every roster tick.
+    svc.setParticipants([...ROOM_OF_9]);
+    await settle();
+    expect(rtc.discoverFocus).toHaveBeenCalledTimes(1);
+    // Back at the cap: the note no longer describes the room; a later rise asks again.
+    svc.setParticipants(ROOM_OF_9.slice(0, 7));
+    await settle();
+    expect(svc.routeNote()).toBe('');
+    svc.setParticipants(ROOM_OF_9);
+    await settle();
+    expect(rtc.discoverFocus).toHaveBeenCalledTimes(2);
+  });
+
+  it('a FAILED SFU join stays p2p with the failing step named', async () => {
+    rtc.joinResult = () => ({ ok: false, step: 'token' });
+    await svc.join('!r:test', ME, { micEnabled: false, maxParticipants: 8 });
+    svc.setParticipants(ROOM_OF_9);
+    await settle();
+    expect(svc.transport()).toBe('p2p');
+    expect(svc.routeNote()).toContain('refused a join token');
+    // Honest about the isolation: everyone else moved to the media server.
+    expect(svc.routeNote()).toContain('you may hear no one');
+    expect(svc.routeNote()).not.toContain('only the first');
+    expect(sentSignals('m.call.hangup').length).toBe(0);
+    // Settled for this over-cap episode (no retry every tick) ...
+    svc.setParticipants([...ROOM_OF_9]);
+    await settle();
+    expect(rtc.join).toHaveBeenCalledTimes(1);
+    // ... and re-armed once the room is back at the cap.
+    svc.setParticipants(ROOM_OF_9.slice(0, 7));
+    await settle();
+    rtc.joinResult = () => ({ ok: true, session: rtc.session, membershipPublished: true });
+    svc.setParticipants(ROOM_OF_9);
+    await settle();
+    expect(rtc.join).toHaveBeenCalledTimes(2);
+    expect(svc.transport()).toBe('sfu');
+  });
+
+  it('a refused membership publish keeps the SFU call and says other call apps will not list me', async () => {
+    rtc.joinResult = () => ({ ok: true, session: rtc.session, membershipPublished: false });
+    await svc.join('!r:test', ME, { micEnabled: false, maxParticipants: 8 });
+    svc.setParticipants(ROOM_OF_9);
+    await settle();
+    expect(svc.transport()).toBe('sfu');
+    expect(svc.callMemberNote()).toContain('org.matrix.msc3401.call.member');
+  });
+
+  it('LEAVE (also the moderator kill switch) leaves the SFU session — which clears the membership', async () => {
+    await svc.join('!r:test', ME, { micEnabled: false, maxParticipants: 8 });
+    svc.setParticipants(ROOM_OF_9);
+    await settle();
+    await svc.leave();
+    expect(rtc.session.leave).toHaveBeenCalledTimes(1);
+    expect(svc.transport()).toBe('p2p');
+    expect(svc.routeNote()).toBe('');
+  });
+
+  it('a leave() while the SFU join is in flight does not adopt the session — it is left', async () => {
+    let release!: (r: RtcJoinResult) => void;
+    rtc.join.and.callFake(() => new Promise<RtcJoinResult>((res) => (release = res)));
+    await svc.join('!r:test', ME, { micEnabled: false, maxParticipants: 8 });
+    svc.setParticipants(ROOM_OF_9);
+    await settle();
+    await svc.leave();
+    release({ ok: true, session: rtc.session, membershipPublished: true });
+    await settle();
+    expect(svc.transport()).toBe('p2p');
+    expect(rtc.session.leave).toHaveBeenCalledTimes(1);
+  });
+
+  it('flag OFF: above the cap nothing is asked and the mesh behaves exactly as before', async () => {
+    rtc.enabled = false;
+    await svc.join('!r:test', '@b5:test', { micEnabled: false, maxParticipants: 8 });
+    svc.setParticipants([ME, ...ROOM_OF_9]);
+    await settle();
+    expect(rtc.discoverFocus).not.toHaveBeenCalled();
+    expect(rtc.join).not.toHaveBeenCalled();
+    expect(svc.transport()).toBe('p2p');
+    expect(svc.routeNote()).toBe('');
+    expect(svc.meshWarning()).toBeTrue();
+  });
+});
+
+describe('MeshCallService with the REAL MatrixRtcService and no flag hook (the shipped default)', () => {
+  it('a 17-member roster makes NO well-known request and keeps the p2p admission', async () => {
+    TestBed.configureTestingModule({ providers: [{ provide: MatrixService, useValue: new MatrixStub() }] });
+    const svc = TestBed.inject(MeshCallService);
+    const rtc = TestBed.inject(MatrixRtcService);
+    const fetchSpy = jasmine.createSpy('fetch');
+    rtc.fetchFn = fetchSpy;
+    svc.pcFactory = (config) => new FakePc(config);
+    await svc.join('!r:test', '@zz:test', { micEnabled: false, maxParticipants: 16 });
+    svc.setParticipants(Array.from({ length: 17 }, (_, i) => `@m${String(i).padStart(2, '0')}:test`));
+    await settle();
+    expect(rtc.enabled).toBeFalse();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(svc.transport()).toBe('p2p');
+    expect(svc.admitted()).toBeFalse();
+    await svc.leave();
   });
 });

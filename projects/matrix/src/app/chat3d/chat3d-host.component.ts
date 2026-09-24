@@ -113,8 +113,10 @@ export function bytesToBase64(buffer: ArrayBuffer): string {
  *
  * CAPABILITY HONESTY (turnAvailable-note precedent): every dark/degraded leg
  * says WHY — no TURN relay (host/LAN-only voice), refused mic (listen-only),
- * refused camera / failed tracker (amplitude fallback), mesh strain (≥8), and
- * a full mesh (not admitted).
+ * refused camera / failed tracker (amplitude fallback), mesh strain (≥8), a
+ * full mesh (not admitted), and — only with the MatrixRTC flag on — whether a
+ * room above the peer-to-peer cap moved to the group-call media server or
+ * stayed peer-to-peer because none is advertised (MeshCallService.routeNote).
  */
 @Component({
   selector: 'hug-chat3d-host',
@@ -192,11 +194,20 @@ export class Chat3dHostComponent implements OnInit, OnDestroy {
     if (this.micEnabled && this.mesh.micNote()) {
       notes.push(this.mesh.micNote());
     }
-    if (!this.mesh.turnAvailable()) {
+    // The TURN note describes the PEER-TO-PEER legs; on the MatrixRTC SFU
+    // (only reachable with that dark flag on) the media server owns ICE.
+    if (!this.mesh.turnAvailable() && this.mesh.transport() !== 'sfu') {
       notes.push('Voice is host/LAN-only until a TURN relay is configured.');
     }
     if (this.mesh.meshWarning()) {
       notes.push('Large room: voice runs peer-to-peer and strains beyond 8 participants — expect degraded audio.');
+    }
+    // Above the p2p cap with MatrixRTC on: which transport voice took, and why.
+    if (this.mesh.routeNote()) {
+      notes.push(this.mesh.routeNote());
+    }
+    if (this.mesh.callMemberNote()) {
+      notes.push(this.mesh.callMemberNote());
     }
     if (this.mesh.staleInviteNote()) {
       notes.push(this.mesh.staleInviteNote());

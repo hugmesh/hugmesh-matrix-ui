@@ -42,6 +42,9 @@ class MeshStub {
   micNote = signal('');
   staleInviteNote = signal('');
   peerStates = signal({});
+  transport = signal<'p2p' | 'sfu'>('p2p');
+  routeNote = signal('');
+  callMemberNote = signal('');
   poseProvider: (() => unknown) | null = null;
   blendshapesProvider: (() => unknown) | null = null;
   onPeerPose: ((userId: string, pose: { x: number; z: number; yaw: number; seat: number }) => void) | null = null;
@@ -965,6 +968,37 @@ describe('Chat3dHostComponent (iframe embed + §5 postMessage bridge, host side)
     expect(notes).toContain('too old');
     const rendered = fixture.nativeElement.querySelectorAll('[data-testid="chat3d-av-note"]');
     expect(rendered.length).toBe(5);
+  });
+
+  it('ABOVE THE CAP with no media server: the mesh\'s WHY note renders (MatrixRTC, #98)', async () => {
+    await create([enabledConfig()]);
+    expect(component.avNotes()).toEqual([]);
+    mesh.routeNote.set('This room has 9 participants, more than the peer-to-peer voice cap of 8. The homeserver '
+      + 'advertises no group-call media server (MatrixRTC focus), so voice and live motion stay peer-to-peer and '
+      + 'only the first 8 participants get them.');
+    fixture.detectChanges();
+    const rendered = [...fixture.nativeElement.querySelectorAll('[data-testid="chat3d-av-note"]')]
+      .map((el: Element) => el.textContent ?? '');
+    expect(rendered.length).toBe(1);
+    expect(rendered[0]).toContain('advertises no group-call media server');
+  });
+
+  it('ON THE SFU: the TURN/LAN-only note is suppressed (the media server owns ICE); route + membership notes show', async () => {
+    await create([enabledConfig()]);
+    mesh.turnAvailable.set(false);
+    fixture.detectChanges();
+    expect(component.avNotes().join(' ').toLowerCase()).toContain('host/lan-only'); // p2p: still honest
+    mesh.transport.set('sfu');
+    mesh.routeNote.set('This room has 9 participants, more than the peer-to-peer voice cap of 8, so voice and live '
+      + 'motion now run through the group-call media server (MatrixRTC / LiveKit).');
+    mesh.callMemberNote.set('This room does not let members announce a call (org.matrix.msc3401.call.member needs a '
+      + 'lower power level), so other Matrix call apps will not list you in it.');
+    fixture.detectChanges();
+    const notes = component.avNotes().join(' | ').toLowerCase();
+    expect(notes).not.toContain('host/lan-only');
+    expect(notes).toContain('group-call media server');
+    expect(notes).toContain('org.matrix.msc3401.call.member');
+    expect(fixture.nativeElement.querySelectorAll('[data-testid="chat3d-av-note"]').length).toBe(2);
   });
 
   it('camera notes surface only when the camera was requested', async () => {
