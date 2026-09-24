@@ -16,7 +16,9 @@ import { InjectionToken } from '@angular/core';
  * Sources the shapes below were read from (2026-09-23), not recalled:
  *  - matrix-org/matrix-js-sdk src/matrixrtc/membershipData/session.ts
  *    (SessionMembershipData) and MembershipManager.ts (makeMembershipStateKey,
- *    makeMyMembership, the `{}` leave event);
+ *    makeMyMembership, the `{}` leave event) and LivekitTransport.ts (the
+ *    `livekit_alias` field of a preferred focus; the SDK's own fixtures fill it
+ *    with a room-id-shaped value, which is what we send);
  *  - element-hq/lk-jwt-service src/requests.rs (LegacySfuRequest, SfuResponse)
  *    and src/handler.rs (process_legacy_sfu_request: identity =
  *    `${verified mxid}:${device_id}`);
