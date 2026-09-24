@@ -66,9 +66,17 @@
 				"serve-original": {
 					"builder": "@angular-devkit/build-angular:dev-server",
 					"options": {
-						"buildTarget": "host:build",
 						"port": 4200
-					}
+					},
+					"configurations": {
+						"production": {
+							"buildTarget": "host:esbuild:production"
+						},
+						"development": {
+							"buildTarget": "host:esbuild:development"
+						}
+					},
+					"defaultConfiguration": "development"
 				},
 				"test": {
 					"builder": "@angular-devkit/build-angular:karma",
@@ -158,9 +166,17 @@
 				"serve-original": {
 					"builder": "@angular-devkit/build-angular:dev-server",
 					"options": {
-						"buildTarget": "matrix:build",
 						"port": 4201
-					}
+					},
+					"configurations": {
+						"production": {
+							"buildTarget": "matrix:esbuild:production"
+						},
+						"development": {
+							"buildTarget": "matrix:esbuild:development"
+						}
+					},
+					"defaultConfiguration": "development"
 				},
 				"test": {
 					"builder": "@angular-devkit/build-angular:karma",
