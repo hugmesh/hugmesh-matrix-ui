@@ -1,19 +1,18 @@
 # face-track e2e — real camera→worker→MediaPipe pipeline (`npm run e2e:face`)
 
-The desktop-first face-tracking e2e required by XR-chat DESIGN §6 Stage 2:
-headless Chromium's **fake camera device plays the committed
-[`face-clip.y4m`](./face-clip.y4m)** into the **REAL `FaceTrackService`**
-(real `getUserMedia`, real capture loop), which drives the **REAL
-`face-track.worker`** bundle running the **REAL self-hosted MediaPipe
-FaceLandmarker** (wasm from the pinned `@mediapipe/tasks-vision` package, the
-committed `face_landmarker.task` model, served under the exact
-`assets/mediapipe/` layout production uses). Assertions are on the **emitted
-52-float blendshape vector stream** — never "the worker started".
+The desktop-first face-tracking e2e required by XR-chat DESIGN §6 Stage 2.
+Headless Chromium's **fake camera device plays the committed
+[`face-clip.y4m`](./face-clip.y4m)** into the **real `FaceTrackService`** (real
+`getUserMedia`, real capture loop). The service drives the **real
+`face-track.worker`** bundle, which runs the **real self-hosted MediaPipe
+FaceLandmarker**: wasm from the pinned `@mediapipe/tasks-vision` package and the
+committed `face_landmarker.task` model, served under the same `assets/mediapipe/`
+layout production uses. Assertions are on the **emitted 52-float blendshape vector
+stream**, never on "the worker started".
 
-Karma-independent by design (no Angular test build, no Playwright): a plain
-node runner ([`run.mjs`](./run.mjs)) esbuild-bundles the real worker + a thin
-harness page, serves them on a loopback port, launches
-`google-chrome-stable --headless=new` with
+It does not use karma or Playwright. A plain node runner ([`run.mjs`](./run.mjs))
+bundles the real worker and a thin harness page with esbuild, serves them on a
+loopback port, and launches `google-chrome-stable --headless=new` with
 
 ```
 --use-fake-ui-for-media-stream
@@ -21,10 +20,10 @@ harness page, serves them on a loopback port, launches
 --use-file-for-fake-video-capture=e2e/face-track/face-clip.y4m
 ```
 
-and receives the vector stream back over a result POST. The harness page's
-only substitutions are the service's **documented injection seams**
-(`workerFactory` pointing at the sibling worker bundle; observation-only
-wrappers counting pipeline stages) — every production code path runs.
+The vector stream comes back over a result POST. The harness page substitutes only
+the service's **documented injection seams** (`workerFactory`, pointing at the
+sibling worker bundle, and observation-only wrappers that count pipeline stages).
+Every production code path runs.
 
 ## Scenarios
 
@@ -39,12 +38,11 @@ Run a subset with `FACE_E2E_ONLY=gpu,cpu`; override the browser with
 
 ## The committed clip
 
-`face-clip.y4m` — 24 frames, 256×192 @ 12fps, C420, 1.69 MB (raw y4m is what
-Chrome's file capture consumes; Chrome loops it). A synthetic but
-**detection-validated** face (MediaPipe's BlazeFace detector rejects flat
-cartoon line-art — this face is shaded/photograph-ish precisely so the real
-detector fires; the e2e asserts `face=true` on ≥60% of vectors, so a clip
-regression cannot pass silently). Animation timeline (frame numbers in
+`face-clip.y4m` — 24 frames, 256×192 @ 12fps, C420, 1.69 MB (Chrome's file capture
+consumes raw y4m, and loops it). The face is synthetic but **detection-validated**.
+MediaPipe's BlazeFace detector rejects flat cartoon line-art, so this face is shaded
+to make the real detector fire. The e2e asserts `face=true` on ≥60% of vectors, so a
+clip regression cannot pass silently. Animation timeline (frame numbers in
 [`clip-gen.html`](./clip-gen.html)):
 
 - 0–7: full jaw open/close cycle → `jawOpen`
@@ -54,15 +52,15 @@ regression cannot pass silently). Animation timeline (frame numbers in
 - 19: eyes wide, brows raised → `browInnerUp`
 - 20–23: second softer jaw cycle
 
-Regenerate with `npm run e2e:face:clip` (headless Chrome draws the frames on
-canvas, converts to I420 in-page, the node server writes the y4m — no ffmpeg
-involved).
+Regenerate with `npm run e2e:face:clip`. Headless Chrome draws the frames on a
+canvas and converts them to I420 in-page; the node server writes the y4m. ffmpeg is
+not involved.
 
 ## Assertion floors vs measured ranges (calibration)
 
-Floors are set about 2.5–3.5× below healthy measured ranges and far above detector
-noise on a static face (<0.02). Measured on 2026-07-23, Chrome 149,
-GPU(swiftshader)/CPU delegates:
+Floors sit about 2.5–3.5× below healthy measured ranges and far above detector noise
+on a static face (<0.02). Measured on 2026-07-23, Chrome 149, GPU (swiftshader) and
+CPU delegates:
 
 | channel | floor | measured (gpu) | measured (cpu) |
 |---|---|---|---|
@@ -71,9 +69,9 @@ GPU(swiftshader)/CPU delegates:
 | `eyeLookOutLeft` / `InRight` (gaze left) | 0.25 | ~0.88 / 0.88 | ~0.88 / 0.88 |
 | `eyeLookInLeft` / `OutRight` (gaze right) | 0.25 | ~0.81 / 0.81 | ~0.81 / 0.80 |
 
-Plus structural checks: ≥40 face-detected vectors, ≥60% detection rate,
-every vector 52 finite floats in [0,1], monotonic timestamps, quantized
-broadcast vector present, camera tracks ended after `stop()`, clean teardown.
+Structural checks on top: ≥40 face-detected vectors, ≥60% detection rate, every
+vector 52 finite floats in [0,1], monotonic timestamps, a quantized broadcast vector
+present, camera tracks ended after `stop()`, clean teardown.
 
 ## Real bugs this harness caught (fixed on this branch)
 
