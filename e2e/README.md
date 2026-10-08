@@ -21,7 +21,8 @@ scenario level — the platform-majority convention (this repo previously used
 `@skip-cluster`; the tag was renamed, semantics unchanged). The default
 Playwright config filters them out (`tags: 'not @cluster'`), so the **default
 run requires no cluster** and CI's `e2e:bdd` job proves the whole suite
-compiles + discovers offline (`bddgen` + `playwright test --list`).
+compiles + discovers offline (`bddgen` + `playwright test --list`). That job
+runs in GitLab CI (`.gitlab-ci.yml`) and is `allow_failure: true`.
 
 `@cluster` is a plain filter tag, deliberately NOT playwright-bdd's reserved
 `@skip` (which removes a scenario from generation entirely, so it could never
@@ -51,7 +52,9 @@ domain-lock helptext, access gating, a11y) are NOT tagged and run offline.
   kill-switch-override + audit-trail semantics), and
   the **SUPERADMIN fold-in** row: SessionService has no distinct superadmin
   tier, so a `superadmin`+`admin` session must render exactly the admin tier
-  (asserted by enumerating every rendered `tier-*` testid).
+  (asserted by enumerating every rendered `tier-*` testid). One @cluster
+  scenario checks that the role-actions disclosure returns focus to its trigger
+  on Escape.
 - **`features/moderation/domainlock.feature`** +
   **`domainlock-enforcement.feature`** — the `matrix_domainlocked` SOCIAL
   LOCAL-ONLY marker: helptext steering (offline), LOCAL actions fully usable
@@ -80,7 +83,10 @@ domain-lock helptext, access gating, a11y) are NOT tagged and run offline.
   member's message and author/member/mod all converge on the redacted
   placeholder; plain member is never OFFERED redaction of another's message
   (but is of their own); author self-redact propagates.
-- **`features/isolation/`** — cross-context tier + tenant isolation.
+- **`features/isolation/cross-tenant.feature`** — cross-context tier + tenant
+  isolation: a MOD context open beside a USER context does not elevate the USER,
+  and two tenants resolve to distinct Matrix ids (both offline); the @cluster
+  scenario is a tenant-b user failing to enumerate tenant-a's rooms.
 - **`features/rooms/room-settings.feature`** (@cluster) — the room settings
   power-level gate: the room CREATOR (Matrix power level 100) renames their
   room and a member observes the update; a plain member (power level 0, below
@@ -307,20 +313,24 @@ E2E_BASE_URL=http://127.0.0.1:8099 npx bddgen && npx playwright test
 Two container-isms bite outside CI: the config's `html` reporter and
 `outputDir` are hardcoded to `/work/results/*`, so a local run needs
 `--reporter=list` and `--output=<writable dir>`; and there is no bundled
-Chromium in every dev image — `channel: 'chrome'` on the `bdd` project reuses
-an installed Google Chrome.
+Chromium in every dev image. The `bdd` project in `playwright.config.ts` uses
+`devices['Desktop Chrome']` and sets no `channel`, so it launches Playwright's
+own Chromium build; to reuse an installed Google Chrome, add `channel: 'chrome'`
+to that project locally.
 
 ## Seed users
 
 See `tests/helpers/roles.ts` — sessions are seeded straight into the
 `hug.session` localStorage key (the exact shape `SessionService.set()`
-writes): alice/bob (tenant-a users), carol (tenant-b), mod-mallory,
-admin-adam, superadmin-sam, domain-locked dana, banned/role-absent eve.
+writes): `user-alice` and `user-bob` (tenant-a users), `user-carol` (tenant-b),
+`mod-mallory`, `admin-adam`, `superadmin-sam`, `user-dana-locked` (domain-locked),
+`banned-eve` (role-absent).
 Cluster scenarios resolve personas' Matrix ids via `matrixIdFor()`
 (`@<username>:<tenant>`, overridable per persona with
-`E2E_MATRIX_ID_<USERNAME>`), and use the seeded rooms `E2E_PUBLIC_ROOM`,
-`E2E_FEDERATED_ROOM_ALIAS` and `E2E_CROSS_DOMAIN_USER` (defaults in
-`features/steps/messaging-steps.ts`). Live runs against a REAL mod-bff must
+`E2E_MATRIX_ID_<USERNAME>`, hyphens becoming underscores and the name
+upper-cased, e.g. `E2E_MATRIX_ID_USER_ALICE`), and use the seeded rooms
+`E2E_PUBLIC_ROOM`, `E2E_FEDERATED_ROOM_ALIAS` and `E2E_CROSS_DOMAIN_USER`
+(defaults in the step files under `features/steps/`). Live runs against a REAL mod-bff must
 also export `E2E_MOD_BFF_TOKEN` (a genuine moderator `bff_` session bearer)
 for the domain-unlock verb — the seeded placeholder token is only honoured by
 a stack running mod-bff in its e2e test-auth mode.

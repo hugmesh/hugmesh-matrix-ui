@@ -60,7 +60,7 @@ involved).
 
 ## Assertion floors vs measured ranges (calibration)
 
-Floors are set 2.5–10× below healthy measured ranges and far above detector
+Floors are set about 2.5–3.5× below healthy measured ranges and far above detector
 noise on a static face (<0.02). Measured on 2026-07-23, Chrome 149,
 GPU(swiftshader)/CPU delegates:
 
@@ -76,6 +76,8 @@ every vector 52 finite floats in [0,1], monotonic timestamps, quantized
 broadcast vector present, camera tracks ended after `stop()`, clean teardown.
 
 ## Real bugs this harness caught (fixed on this branch)
+
+All three are fixed on `main`.
 
 1. **`ModuleFactory not set.`** — the emscripten wasm loader is UMD-tail-only;
    dynamically `import()`ed by tasks-vision's module-worker fallback its
