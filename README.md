@@ -106,7 +106,11 @@ Element-like web client:
 Supporting components: `TimelineComponent` (messages, day separators,
 back-pagination, hover react/reply/thread/edit/delete, reaction pills, edited/
 redacted markers, thread chips), `ComposerComponent` (send/reply/edit/thread +
-attachments), `ReactionPickerComponent` (roving-tabindex emoji menu).
+attachments), `ReactionPickerComponent` (roving-tabindex emoji menu),
+`ClientConnectBannerComponent` (on the chat shell: for a user holding
+`ROLE_MATRIX_EXTERNAL_CLIENT`, shows the homeserver URL to paste into their own
+Matrix client, but only after a probe saw `/_matrix/client/versions` answer with
+a JSON version list; otherwise it says why the URL is unavailable).
 
 `MatrixService` is a thin Matrix Client-Server API wrapper (v3 + v1 for
 relations/threads/media) targeting the homeserver via the be-gateway: sync,
@@ -565,9 +569,10 @@ Conventions the components actually follow:
 - **Honest validation**: error text is shown only after an attempt, not on
   first render (WCAG 3.3.1).
 
-Note: interactive controls here use the native `[disabled]` attribute (e.g. the
-composer Send / attachment buttons), not the `aria-disabled`+help-text pattern
-used by some sibling remotes.
+Note: most interactive controls here use the native `[disabled]` attribute (e.g.
+the composer Send / attachment buttons), not the `aria-disabled`+help-text pattern
+used by some sibling remotes. The exception is the composer's local-only toggle,
+which uses `aria-disabled="true"` plus help-text.
 
 ## How it fits the platform
 
@@ -629,7 +634,8 @@ role tiers for defence-in-depth.
 
 ## Current State
 
-As of July 2026:
+Code claims below were checked against `main` on 2026-10-07. Claims about other
+repos and live deployments are as last recorded.
 
 - **Repo-wide code rebrand to HugMesh shipped (PR #51)** — component selector
   prefixes, runtime globals (`__HUG_*__`), localStorage keys (`hug.session`,
@@ -655,8 +661,8 @@ As of July 2026:
   built and deployed as this repo's image: the full Element-like CS-API client
   (`MATRIX_ROUTES`), additive role tiers, the `matrix_domainlocked` SOCIAL
   LOCAL-ONLY behaviour, the honest AI-cloak media path through the user-bff, the
-  a11y baseline, and a co-located unit spec per file plus a Playwright+BDD E2E
-  harness.
+  a11y baseline, co-located unit specs (the exceptions are listed under
+  [Tests](#tests)) and a Playwright+BDD E2E harness.
 - **Read receipts render** — the "seen by" indicator on the timeline
   (per-member chips anchored on the exact event each reader last read) and the
   send-on-view effect that advertises our own read position are both shipped;
@@ -702,8 +708,10 @@ As of July 2026:
   homeserver access token.
 - **CI is GitLab** — the GitHub repo is pull-mirrored into the in-cluster
   GitLab; `.gitlab-ci.yml` builds + pushes the image and runs the centralized
-  OWASP pen-test stage (SCA + ZAP DAST, both non-blocking). There are **no**
-  GitHub Actions in the deploy/security path.
+  OWASP pen-test stage (SCA + ZAP DAST, both non-blocking). The only GitHub
+  Actions workflow, `.github/workflows/release.yml`, is manual-only
+  (`workflow_dispatch`) and publishes the image to GHCR; nothing runs it
+  automatically, and it is not in the deploy/security path.
 - **A/V client ICE wiring shipped, but effectively LAN/local-only** — the call
   component fetches the homeserver's ICE/TURN credentials
   (`MatrixService.turnServer()`) and feeds them to the `RTCPeerConnection`; since
@@ -712,7 +720,9 @@ As of July 2026:
 - **nginx baseline security headers + a strong nonce-based CSP shipped** — the
   served SPA emits `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
   `Referrer-Policy`, HSTS, and a per-request nonce'd `Content-Security-Policy`
-  (no `unsafe-inline`/`unsafe-hashes` in `script-src`) on every response;
+  (no `unsafe-inline`/`unsafe-hashes` in `script-src`). The CSP comes from
+  `location /` (the SPA and its assets); `/healthz` and the theme stylesheets
+  do not carry it, and the stylesheets carry no HSTS;
   COEP-CORP / Permissions-Policy are still deferred for per-UI tuning in the
   live-cluster pass (see [Deploy](#deploy)).
 
@@ -733,11 +743,23 @@ the host (`npm start`, :4200); the host's
 `4202`, `4204`, `4205`, `4206`, `4207` respectively. In the cluster that
 manifest is replaced with the per-nginx remote URLs.
 
+**Known break (checked 2026-10-07 on `main`):** `npm start`, `ng serve host` and
+`ng serve matrix` all exit 127 before compiling, with `Configuration 'development'
+for target 'serve-original' in project '<project>' is not set in the workspace`.
+The cause and the fix are in issue #19 and PR #20 (not merged). `ng build` and
+`ng test` are not affected.
+
 ### Tests
 
-Aligned to the HugMesh test standard, **every component, service and route
-has a co-located `*.spec.ts`** Jasmine/Karma unit spec (one per file across
-`projects/matrix/src/app`), run via `npm test` (`ng test matrix`,
+Aligned to the HugMesh test standard, almost every component, service and route
+has a co-located `*.spec.ts` Jasmine/Karma unit spec under
+`projects/matrix/src/app`. Twelve source files have none of their own:
+`ClientConnectBannerComponent` and `MouthOverlayComponent` have no spec at all;
+`VoicePlaybackService` and `ChatThemeRootDirective` are exercised only from other
+specs (`hug-character-panel`, `user-settings`); `face-track.worker.ts` is covered
+by `npm run e2e:face`; the rest are small modules (`legacy-read.ts`,
+`mount-route.ts`, `shell-events.ts`, `wide-viewport.ts`, `vn/models/*`,
+`vn/util/svg-sanitize.client.ts`). Run the specs via `npm test` (`ng test matrix`,
 `ChromeHeadlessCI`, single run / `--watch=false`). The specs assert the things
 this UI is responsible for: the additive role-tier gating, the
 `matrix_domainlocked` SOCIAL LOCAL-ONLY behaviour, the **honest** AI-cloak badge
@@ -756,15 +778,20 @@ so the host can fetch `remoteEntry.json` cross-origin; `GET /healthz` returns
 response (`always`): `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
 `Referrer-Policy: strict-origin-when-cross-origin`, and HSTS
 (`max-age=31536000; includeSubDomains`) — re-declared per `location` because
-nginx `add_header` inheritance is not cumulative. A **strong nonce-based
+nginx `add_header` inheritance is not cumulative (the two theme-stylesheet
+locations re-declare all but HSTS). A **strong nonce-based
 Content-Security-Policy** is also shipped: a fresh per-request nonce
 (`$request_id`) is injected into both the `script-src` directive and every
 `<script>` tag in `index.html`, so `script-src` carries no
-`unsafe-inline`/`unsafe-hashes`. COEP-CORP / Permissions-Policy are still
-deliberately deferred (per-UI tuning + live-cluster validation).
-`.gitlab-ci.yml` builds + pushes the image to the in-cluster GitLab
+`unsafe-inline`/`unsafe-hashes`; only `location /` sends it. COEP-CORP /
+Permissions-Policy are still deliberately deferred (per-UI tuning +
+live-cluster validation). At container start,
+`docker-entrypoint.d/50-hug-theme.sh` writes the brand stylesheet from the theme
+environment; nginx serves it `no-store` at `/hug-theme.css` (and the legacy
+`/snap-theme.css`). `.gitlab-ci.yml` builds + pushes the image to the in-cluster GitLab
 registry on default-branch / tag pushes (the GitHub repo is pull-mirrored into
-GitLab — there is **no** GitHub Actions deploy path). The image carries **no**
+GitLab — there is no automatic GitHub Actions deploy path; the manual
+`release.yml` workflow publishes to GHCR only when someone runs it). The image carries **no**
 keys — KEYS material is supplied from the USB at first boot. ArgoCD deploys it to
 the `hugmesh-frontend` namespace, fronted by the fe-gateway at
 `/social/matrix`. `projects/host` is **not** deployed.
