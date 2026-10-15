@@ -64,8 +64,8 @@ describe('RoomSettingsComponent', () => {
   afterEach(() => localStorage.clear());
 
   it('loads the room summary into the editable fields', () => {
-    expect(component.name).toBe('General');
-    expect(component.topic).toBe('Chat');
+    expect(component.name()).toBe('General');
+    expect(component.topic()).toBe('Chat');
     expect(component.powerUsers()).toEqual([{ userId: '@admin:test', level: 100 }]);
   });
 
@@ -78,8 +78,8 @@ describe('RoomSettingsComponent', () => {
   });
 
   it('persists name + topic as state events on save', async () => {
-    component.name = 'Renamed';
-    component.topic = 'New topic';
+    component.name.set('Renamed');
+    component.topic.set('New topic');
     await component.save();
     expect(matrix.setStateEvent).toHaveBeenCalledWith('!r:test', 'm.room.name', { name: 'Renamed' });
     expect(matrix.setStateEvent).toHaveBeenCalledWith('!r:test', 'm.room.topic', { topic: 'New topic' });
@@ -281,18 +281,18 @@ describe('RoomSettingsComponent', () => {
 
       it('offers the controls and loads the existing bridge state off the room state event', () => {
         expect(component.canEditMeshBridge()).toBeTrue();
-        expect(component.meshEnabled).toBeTrue();
-        expect(component.meshDevice).toBe('lora-1');
-        expect(component.meshChannel).toBe(3);
+        expect(component.meshEnabled()).toBeTrue();
+        expect(component.meshDevice()).toBe('lora-1');
+        expect(component.meshChannel()).toBe(3);
         const el = fixture.nativeElement;
         expect(el.querySelector('[data-testid="btn-save-mesh"]').disabled).toBeFalse();
         expect(el.querySelector('[data-testid="mesh-locked-help"]')).toBeNull();
       });
 
       it('ENABLE: save writes the state AND invites the bridge bot on the caller\'s own homeserver (derived from whoami, never hardcoded)', async () => {
-        component.meshEnabled = true;
-        component.meshDevice = 'lora-1';
-        component.meshChannel = 3;
+        component.meshEnabled.set(true);
+        component.meshDevice.set('lora-1');
+        component.meshChannel.set(3);
         await component.saveMeshBridge();
         expect(matrix.setStateEvent).toHaveBeenCalledWith('!r:test', MESH_BRIDGE_STATE_TYPE,
           { enabled: true, device: 'lora-1', meshChannel: 3 });
@@ -302,13 +302,13 @@ describe('RoomSettingsComponent', () => {
 
       it('tolerates an already-invited/already-joined bridge bot (a rejected invite still reports saved)', async () => {
         matrix.invite.and.rejectWith(new Error('403 M_FORBIDDEN: already in the room'));
-        component.meshEnabled = true;
+        component.meshEnabled.set(true);
         await component.saveMeshBridge();
         expect(component.status()).toContain('saved');
       });
 
       it('DISABLE: save only writes the state — no invite (the bridge leaves on its own)', async () => {
-        component.meshEnabled = false;
+        component.meshEnabled.set(false);
         await component.saveMeshBridge();
         expect(matrix.setStateEvent).toHaveBeenCalledWith('!r:test', MESH_BRIDGE_STATE_TYPE,
           jasmine.objectContaining({ enabled: false }));
@@ -317,7 +317,7 @@ describe('RoomSettingsComponent', () => {
 
       it('surfaces a failed state write (e.g. a race that dropped our PL) without inviting the bot', async () => {
         matrix.setStateEvent.and.rejectWith(new Error('403 M_FORBIDDEN'));
-        component.meshEnabled = true;
+        component.meshEnabled.set(true);
         await component.saveMeshBridge();
         expect(matrix.invite).not.toHaveBeenCalled();
         expect((component.status() || '').toLowerCase()).toContain('failed');
@@ -408,22 +408,22 @@ describe('RoomSettingsComponent', () => {
 
       it('offers the controls and loads the existing chat3d state off the room state event', () => {
         expect(component.canEditChat3d()).toBeTrue();
-        expect(component.chat3dEnabled).toBeTrue();
-        expect(component.chat3dStyle).toBe('default');
-        expect(component.chat3dMaxParticipants).toBe(12);
-        expect(component.chat3dAllowMedia).toBeFalse();
-        expect(component.chat3dStageModOnly).toBeFalse();
+        expect(component.chat3dEnabled()).toBeTrue();
+        expect(component.chat3dStyle()).toBe('default');
+        expect(component.chat3dMaxParticipants()).toBe(12);
+        expect(component.chat3dAllowMedia()).toBeFalse();
+        expect(component.chat3dStageModOnly()).toBeFalse();
         const el = fixture.nativeElement;
         expect(el.querySelector('[data-testid="btn-save-chat3d"]').disabled).toBeFalse();
         expect(el.querySelector('[data-testid="chat3d-locked-help"]')).toBeNull();
       });
 
       it('ENABLE: save writes the (normalized) state AND merges the PL overrides into the CURRENT power levels', async () => {
-        component.chat3dEnabled = true;
-        component.chat3dStyle = 'noir';
-        component.chat3dMaxParticipants = 99; // normalized to the 16-seat cap on the wire
-        component.chat3dAllowMedia = true;
-        component.chat3dStageModOnly = false;
+        component.chat3dEnabled.set(true);
+        component.chat3dStyle.set('noir');
+        component.chat3dMaxParticipants.set(99); // normalized to the 16-seat cap on the wire
+        component.chat3dAllowMedia.set(true);
+        component.chat3dStageModOnly.set(false);
         await component.saveChat3d();
         expect(matrix.setStateEvent).toHaveBeenCalledWith('!r:test', CHAT3D_STATE_TYPE,
           { enabled: true, style: 'noir', maxParticipants: 16, allowMedia: true, stageModOnly: false });
@@ -458,8 +458,8 @@ describe('RoomSettingsComponent', () => {
       });
 
       it('ENABLE with a moderator-only stage: the scene override is 50, avatars stay 0', async () => {
-        component.chat3dEnabled = true;
-        component.chat3dStageModOnly = true;
+        component.chat3dEnabled.set(true);
+        component.chat3dStageModOnly.set(true);
         await component.saveChat3d();
         const plWrite = matrix.setStateEvent.calls.allArgs().find((a) => a[1] === 'm.room.power_levels')!;
         expect(plWrite).toBeDefined();
@@ -468,7 +468,7 @@ describe('RoomSettingsComponent', () => {
       });
 
       it('DISABLE: save only writes the state — the power levels are left alone', async () => {
-        component.chat3dEnabled = false;
+        component.chat3dEnabled.set(false);
         await component.saveChat3d();
         expect(matrix.setStateEvent).toHaveBeenCalledWith('!r:test', CHAT3D_STATE_TYPE,
           jasmine.objectContaining({ enabled: false }));
@@ -481,7 +481,7 @@ describe('RoomSettingsComponent', () => {
           type === 'm.room.power_levels'
             ? Promise.reject(new Error('403 M_FORBIDDEN'))
             : Promise.resolve('$state'));
-        component.chat3dEnabled = true;
+        component.chat3dEnabled.set(true);
         await component.saveChat3d();
         expect((component.status() || '').toLowerCase()).toContain('power-level overrides');
         expect((component.status() || '')).toContain('saved');
@@ -494,7 +494,7 @@ describe('RoomSettingsComponent', () => {
           type === 'm.room.power_levels'
             ? Promise.reject(new Error('500'))
             : Promise.resolve(null));
-        component.chat3dEnabled = true;
+        component.chat3dEnabled.set(true);
         await component.saveChat3d();
         expect(matrix.setStateEvent.calls.allArgs().some((a) => a[1] === 'm.room.power_levels')).toBeFalse();
         expect((component.status() || '').toLowerCase()).toContain('power-level overrides');
@@ -502,7 +502,7 @@ describe('RoomSettingsComponent', () => {
 
       it('surfaces a failed state write without attempting the override write', async () => {
         matrix.setStateEvent.and.rejectWith(new Error('403 M_FORBIDDEN'));
-        component.chat3dEnabled = true;
+        component.chat3dEnabled.set(true);
         await component.saveChat3d();
         expect((component.status() || '').toLowerCase()).toContain('failed');
         expect(matrix.setStateEvent.calls.allArgs().some((a) => a[1] === 'm.room.power_levels')).toBeFalse();

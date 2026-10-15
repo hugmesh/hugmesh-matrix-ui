@@ -16,16 +16,10 @@ Feature: The Meshtastic LoRa-mesh bridge is visible and honest about what it can
   # e2e/README.md's Known e2e gaps):
   #   * a real radio round-trip — no bridge appservice is deployed anywhere yet,
   #     so "a packet leaves this room and comes back over LoRa" is unscriptable.
-  #   * the room-settings bridge toggle — blocked on a CHANGE-DETECTION defect
-  #     in room-settings.component, not on the test harness: the component
-  #     renders `name`/`topic`/`meshEnabled`/`meshDevice`/`meshChannel` from
-  #     PLAIN fields assigned after `await`ing MatrixService's raw `fetch`, and
-  #     zone.js 0.16 does not patch `fetch`, so no change-detection tick follows
-  #     the load. In a real browser the section stays at its defaults (and
-  #     falsely power-LOCKED, since `summary` is still null) until some
-  #     unrelated interaction ticks change detection. A scenario written against
-  #     that page today could only assert the broken state, so it is deliberately
-  #     absent rather than green.
+  #   * the room-settings bridge toggle — not scripted yet. The change-detection
+  #     defect that used to block it is fixed (the component's loaded fields are
+  #     signals; room-settings.load-render.spec.ts covers the render), so the
+  #     allow/deny power-level pair can now be added here.
 
   # ── The timeline provenance badge ──
   # A room whose history holds ONE radio-bridged message (an @mesh-* sender

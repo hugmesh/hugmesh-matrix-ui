@@ -10,9 +10,8 @@
 //    the claim/visibility/release verbs are asserted on the REQUESTS they send
 //    (captured by the same fulfilment), never on a fabricated echo.
 //
-// The third mesh surface — the room-settings bridge toggle — is deliberately
-// NOT covered here; see mesh-bridge.feature's header for the change-detection
-// defect that blocks it.
+// The third mesh surface — the room-settings bridge toggle — is not covered
+// here yet; see mesh-bridge.feature's header.
 //
 // The node id in every fixture is a radio's SELF-REPORTED identity — that is
 // the point of the caution copy these steps assert.

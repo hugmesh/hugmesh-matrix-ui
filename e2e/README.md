@@ -229,19 +229,13 @@ loopback asset server, not the app UI.
 - **Meshtastic LoRa-mesh bridge — the ROOM-SETTINGS toggle** (see the main
   [README](../README.md#meshtastic-lora-mesh-bridge-rooms-timeline-my-devices)). The
   other two surfaces have offline coverage in `features/rooms/mesh-bridge.feature`;
-  the room-settings bridge section does not. The blocker is the app, not the
-  harness. `room-settings.component` renders `name`, `topic`, `meshEnabled`,
-  `meshDevice` and `meshChannel` from PLAIN fields assigned after `await`ing
-  `MatrixService`'s raw `fetch`. zone.js 0.16 does not patch `fetch` (only
-  `Promise`), so those continuations run outside the Angular zone and NO
-  change-detection tick follows the load. On a real page load the section sits at
-  its defaults, and — because `summary` is still `null` when `canEditMeshBridge()`
-  is evaluated — renders as power-LOCKED with the WHY-helptext even for a room
-  moderator, until some unrelated interaction ticks change detection. (Surfaces that
-  work read through signals or Angular's `HttpClient`, which re-enters the zone.) A
-  scenario written against that page today could only assert the broken state, so it
-  is absent rather than green. Fix the component first, then add the allow/deny
-  power-level pair.
+  the room-settings bridge section does not yet. The app defect that blocked it is
+  fixed: `room-settings.component` used to render `name`, `topic`, `meshEnabled`,
+  `meshDevice` and `meshChannel` from plain fields assigned after `await`ing
+  `MatrixService`'s raw `fetch`, so nothing re-rendered the page after the load and
+  a room moderator saw the section power-LOCKED. Those fields are now signals, and
+  the unit spec `room-settings.load-render.spec.ts` covers the render. Still to do:
+  the allow/deny power-level pair as a scenario here.
 - **Meshtastic LoRa-mesh bridge — a real radio round-trip.** No bridge appservice is
   deployed anywhere, so "a message leaves this room and comes back over LoRa" cannot
   be scripted. The seeded fixtures prove how the client renders that provenance, never
