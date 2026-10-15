@@ -54,26 +54,30 @@ export class RoomSettingsComponent implements OnInit, OnDestroy {
   readonly roomId = signal<string | null>(null);
   readonly busy = signal(false);
   readonly status = signal('');
-  name = '';
-  topic = '';
+  /** The loaded fields below are SIGNALS on purpose: MatrixService reads through
+   *  a raw `fetch`, and a plain field assigned after that await left the page
+   *  un-rendered. A signal write schedules the re-render
+   *  (room-settings.load-render.spec.ts). */
+  readonly name = signal('');
+  readonly topic = signal('');
   inviteUser = '';
 
   // ── Mesh bridge (LoRa) ──
   /** The controls' working copy of the room's mesh-bridge state (loaded from the
    *  net.hugmesh.mesh.bridge state event; defaults = bridge off). */
-  meshEnabled = false;
-  meshDevice = DEFAULT_MESH_DEVICE;
-  meshChannel = 0;
+  readonly meshEnabled = signal(false);
+  readonly meshDevice = signal(DEFAULT_MESH_DEVICE);
+  readonly meshChannel = signal(0);
 
   // ── 3D chat room (Shadows of the Net) ──
   /** The controls' working copy of the room's chat3d state (loaded from the
    *  net.hugmesh.chat3d state event; defaults = room off, noir style,
    *  8 seats, media on, stage moderator-only). */
-  chat3dEnabled = false;
-  chat3dStyle: Chat3dRoomStyle = DEFAULT_CHAT3D_STYLE;
-  chat3dMaxParticipants = CHAT3D_DEFAULT_PARTICIPANTS;
-  chat3dAllowMedia = true;
-  chat3dStageModOnly = true;
+  readonly chat3dEnabled = signal(false);
+  readonly chat3dStyle = signal<Chat3dRoomStyle>(DEFAULT_CHAT3D_STYLE);
+  readonly chat3dMaxParticipants = signal(CHAT3D_DEFAULT_PARTICIPANTS);
+  readonly chat3dAllowMedia = signal(true);
+  readonly chat3dStageModOnly = signal(true);
   /** Bounds surfaced to the template's number input. */
   readonly chat3dMinSeats = CHAT3D_MIN_PARTICIPANTS;
   readonly chat3dMaxSeats = CHAT3D_MAX_PARTICIPANTS;
@@ -98,7 +102,7 @@ export class RoomSettingsComponent implements OnInit, OnDestroy {
    *  the mesh-bridge controls. Empty until whoami resolves. */
   readonly myUserId = signal('');
   private avatarMxc: string | null = null;
-  private summary: RoomSummary | null = null;
+  private readonly summary = signal<RoomSummary | null>(null);
 
   private sub?: { unsubscribe(): void };
 
@@ -122,22 +126,23 @@ export class RoomSettingsComponent implements OnInit, OnDestroy {
   }
 
   private async load(rid: string): Promise<void> {
-    this.summary = await this.matrix.roomSummary(rid);
-    this.name = this.summary.name ?? '';
-    this.topic = this.summary.topic ?? '';
+    const summary = await this.matrix.roomSummary(rid);
+    this.summary.set(summary);
+    this.name.set(summary.name ?? '');
+    this.topic.set(summary.topic ?? '');
     // Fail-soft: an unset/unreadable/malformed bridge event renders as "off".
     const mesh = await this.meshBridge.getMeshBridgeState(rid);
-    this.meshEnabled = mesh?.enabled ?? false;
-    this.meshDevice = mesh?.device ?? DEFAULT_MESH_DEVICE;
-    this.meshChannel = mesh?.meshChannel ?? 0;
+    this.meshEnabled.set(mesh?.enabled ?? false);
+    this.meshDevice.set(mesh?.device ?? DEFAULT_MESH_DEVICE);
+    this.meshChannel.set(mesh?.meshChannel ?? 0);
     // Fail-soft: an unset/unreadable/malformed chat3d event renders as "off"
     // with the parse's safe defaults for the sub-settings.
     const c3d = await this.chat3d.getChat3dState(rid);
-    this.chat3dEnabled = c3d?.enabled ?? false;
-    this.chat3dStyle = c3d?.style ?? DEFAULT_CHAT3D_STYLE;
-    this.chat3dMaxParticipants = c3d?.maxParticipants ?? CHAT3D_DEFAULT_PARTICIPANTS;
-    this.chat3dAllowMedia = c3d?.allowMedia ?? true;
-    this.chat3dStageModOnly = c3d?.stageModOnly ?? true;
+    this.chat3dEnabled.set(c3d?.enabled ?? false);
+    this.chat3dStyle.set(c3d?.style ?? DEFAULT_CHAT3D_STYLE);
+    this.chat3dMaxParticipants.set(c3d?.maxParticipants ?? CHAT3D_DEFAULT_PARTICIPANTS);
+    this.chat3dAllowMedia.set(c3d?.allowMedia ?? true);
+    this.chat3dStageModOnly.set(c3d?.stageModOnly ?? true);
   }
 
   /** The server portion of a Matrix user id (`@bob:other.org` → `other.org`). */
@@ -172,7 +177,7 @@ export class RoomSettingsComponent implements OnInit, OnDestroy {
   }
 
   powerUsers(): { userId: string; level: number }[] {
-    const users = this.summary?.powerLevels?.users ?? {};
+    const users = this.summary()?.powerLevels?.users ?? {};
     return Object.keys(users).map((userId) => ({ userId, level: users[userId] }));
   }
 
@@ -187,7 +192,7 @@ export class RoomSettingsComponent implements OnInit, OnDestroy {
    *  decides whether the controls are OFFERED (greyed-out with WHY-helptext
    *  otherwise, never a bare disabled control). */
   canEditMeshBridge(): boolean {
-    return senderMayDriveScene(this.summary?.powerLevels ?? null, this.myUserId() || null, MESH_BRIDGE_STATE_TYPE);
+    return senderMayDriveScene(this.summary()?.powerLevels ?? null, this.myUserId() || null, MESH_BRIDGE_STATE_TYPE);
   }
 
   /** WHY-helptext for the mesh-bridge controls when the caller's power level is
@@ -223,15 +228,15 @@ export class RoomSettingsComponent implements OnInit, OnDestroy {
     this.busy.set(true);
     try {
       const ok = await this.meshBridge.setMeshBridgeState(rid, {
-        enabled: this.meshEnabled,
-        device: this.meshDevice,
-        meshChannel: this.meshChannel,
+        enabled: this.meshEnabled(),
+        device: this.meshDevice(),
+        meshChannel: this.meshChannel(),
       });
       if (!ok) {
         this.status.set('Mesh bridge save failed — the room may not allow you to change its settings.');
         return;
       }
-      if (this.meshEnabled) {
+      if (this.meshEnabled()) {
         const bot = this.meshBotMxid();
         if (bot) {
           // Tolerate an already-invited/already-joined bot: the state write is
@@ -256,7 +261,7 @@ export class RoomSettingsComponent implements OnInit, OnDestroy {
    *  decides whether the controls are OFFERED (greyed with WHY-helptext
    *  otherwise, never a bare disabled control). */
   canEditChat3d(): boolean {
-    return senderMayDriveScene(this.summary?.powerLevels ?? null, this.myUserId() || null, CHAT3D_STATE_TYPE);
+    return senderMayDriveScene(this.summary()?.powerLevels ?? null, this.myUserId() || null, CHAT3D_STATE_TYPE);
   }
 
   /** WHY-helptext for the chat3d controls when the caller's power level is
@@ -296,17 +301,17 @@ export class RoomSettingsComponent implements OnInit, OnDestroy {
     this.busy.set(true);
     try {
       const ok = await this.chat3d.setChat3dState(rid, {
-        enabled: this.chat3dEnabled,
-        style: this.chat3dStyle,
-        maxParticipants: this.chat3dMaxParticipants,
-        allowMedia: this.chat3dAllowMedia,
-        stageModOnly: this.chat3dStageModOnly,
+        enabled: this.chat3dEnabled(),
+        style: this.chat3dStyle(),
+        maxParticipants: this.chat3dMaxParticipants(),
+        allowMedia: this.chat3dAllowMedia(),
+        stageModOnly: this.chat3dStageModOnly(),
       });
       if (!ok) {
         this.status.set('3D chat room save failed — the room may not allow you to change its settings.');
         return;
       }
-      if (this.chat3dEnabled && !(await this.writeChat3dPowerOverrides(rid))) {
+      if (this.chat3dEnabled() && !(await this.writeChat3dPowerOverrides(rid))) {
         this.status.set('3D chat room settings saved — but the power-level overrides could not be written, '
           + 'so members may be unable to publish their avatars or place media. Ask a room admin to allow '
           + 'the net.hugmesh.chat3d.avatar and .scene events.');
@@ -337,7 +342,7 @@ export class RoomSettingsComponent implements OnInit, OnDestroy {
     const events = {
       ...(pl['events'] && typeof pl['events'] === 'object' ? (pl['events'] as Record<string, unknown>) : {}),
       [CHAT3D_AVATAR_TYPE]: 0,
-      [CHAT3D_SCENE_TYPE]: this.chat3dStageModOnly ? 50 : 0,
+      [CHAT3D_SCENE_TYPE]: this.chat3dStageModOnly() ? 50 : 0,
     };
     try {
       await this.matrix.setStateEvent(rid, 'm.room.power_levels', { ...pl, events });
@@ -365,8 +370,8 @@ export class RoomSettingsComponent implements OnInit, OnDestroy {
     if (!rid) return;
     this.busy.set(true);
     try {
-      await this.matrix.setStateEvent(rid, 'm.room.name', { name: this.name });
-      await this.matrix.setStateEvent(rid, 'm.room.topic', { topic: this.topic });
+      await this.matrix.setStateEvent(rid, 'm.room.name', { name: this.name() });
+      await this.matrix.setStateEvent(rid, 'm.room.topic', { topic: this.topic() });
       if (this.avatarMxc) await this.matrix.setStateEvent(rid, 'm.room.avatar', { url: this.avatarMxc });
       this.status.set('Saved');
     } catch (e: unknown) {

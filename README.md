@@ -676,7 +676,7 @@ repos and live deployments are as last recorded.
   The unit suite (`ChromeHeadlessCI`, offline) has about 1,080 `it(` blocks, counted
   statically on 2026-10-07; the earlier "613/613 passing" figure is out of date. E2E
   covers the badge and My Mesh Devices (`e2e/features/rooms/mesh-bridge.feature`);
-  the room-settings toggle and a real radio round-trip are still uncovered.
+  the room-settings toggle and a real radio round-trip are still uncovered by E2E.
 - **Auth is native-login with cookie-only sessions.** The browser carries only the
   HttpOnly `bff_` cookie, and `MatrixService` reaches the homeserver only through the
   user-bff hsproxy (PR #27). Details: [Auth & token model](#auth--token-model-no-login-ui-here).
@@ -846,8 +846,7 @@ so readers do not mistake planned platform work for shipped UI.
     tracks it, along with two more blockers outside this UI: a `.uidist` build that
     predates the `systems.hugmesh.chat3d*` → `net.hugmesh.chat3d*` rename, and the
     fact that no seed, bootstrap or fixture ever turns the room flag on. The
-    moderator control exists here (see the change-detection caveat in the e2e-gap
-    note below), but somebody still has to click it.
+    moderator control exists here, but somebody still has to click it.
   - **`/games` and `/games/admin` (demo host only, issue #2).** Both are
     manifest-driven `loadChildren` mounts (`games-remote.routes.ts`). Register a
     `games` or `games-admin` entry in `federation.manifest.json` and the remote's
@@ -884,14 +883,14 @@ so readers do not mistake planned platform work for shipped UI.
   coverage of the timeline provenance badge and the My Mesh Devices
   list/claim/visibility/release flow (`e2e/features/rooms/mesh-bridge.feature`). Two
   pieces are uncovered. One is a real radio round-trip: no bridge appservice is
-  deployed to script one against. The other is the **room-settings bridge toggle**,
-  which is blocked on a change-detection defect, not on the harness.
-  `room-settings.component` renders `name`/`topic`/`meshEnabled`/`meshDevice`/
-  `meshChannel` from plain fields assigned after `await`ing `MatrixService`'s raw
-  `fetch`, and zone.js 0.16 does not patch `fetch`. So no change-detection tick
-  follows the load, and the section stays at its defaults (and falsely
-  power-locked, `summary` being still `null`) until an unrelated interaction ticks
-  change detection.
+  deployed to script one against. The other is the **room-settings bridge toggle**.
+  It used to be blocked on a change-detection defect: `room-settings.component`
+  held the loaded fields in plain properties assigned after `await`ing
+  `MatrixService`'s raw `fetch`, so the page stayed at its defaults, falsely
+  power-locked, until an unrelated interaction. The loaded fields are now signals,
+  and `room-settings.load-render.spec.ts` proves the page renders them with no
+  manual change detection. The allow/deny power-level scenario in
+  `mesh-bridge.feature` is still to be written.
 - **Known e2e gap (closed).** The shared VN-scene moderation trust boundary
   (`vn-scene-moderation.ts`'s power-level gate and `SceneRateLimiter`; see
   [VN voice chat](#vn-voice-chat-scenes-props-the-stage)) is now driven end to end
