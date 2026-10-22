@@ -647,14 +647,21 @@ repos and live deployments are as last recorded.
   wire contract with the homeserver, BFF and bridge, so they follow a separate
   policy (2026-08-12). The canonical prefix is **`net.hugmesh.*`** (it follows the
   `.net` domain move). Every WRITE mints only the canonical name. Every READ walks
-  a three-generation chain — `net.hugmesh.<x>` → `systems.hugmesh.<x>` (post-squash
-  builds) → the pre-rebrand original — and the newest generation present wins.
-  Rooms and accounts written by any earlier build keep working with no migration.
-  Every pre-rebrand spelling lives in one file,
+  a chain — `net.hugmesh.<x>` → `systems.hugmesh.<x>` (post-squash builds) → the
+  original pre-HugMesh brand's `systems.<brand>.<x>` — and the newest generation
+  present wins. Rooms and accounts written by any earlier build keep working with
+  no migration. All legacy names are built in one file,
   `projects/matrix/src/app/legacy-read.ts`; each service re-exports its `LEGACY_*`
-  constants beside the canonical one. The `com.hugmesh.mesh` CONTENT field keeps its
-  spelling (read-fallback to the old field name,
-  `LEGACY_MESH_EVENT_CONTENT_FIELD`). The meshbridge appservice honors the same
+  constants beside the canonical one. The original brand is private to the
+  deployments that ran it, so this repo never spells it: a deployment whose rooms
+  still carry those names sets the runtime global
+  `__HUG_LEGACY_EVENT_BRANDS__` (a list of brand stems, newest first, for example
+  `['exampleorg']`) in the host page before this remote loads, like every other
+  `__HUG_*__` hook. Unset, only the `net.hugmesh` and `systems.hugmesh`
+  generations are read, and rooms that only have the original brand's events
+  show none of that state. The `com.hugmesh.mesh` CONTENT field keeps its
+  spelling (read-fallback to `com.<brand>.mesh` for each injected brand,
+  `LEGACY_MESH_EVENT_CONTENT_FIELDS`). The meshbridge appservice honors the same
   chain (hugmesh-generator `bridge.py`).
 - **Shipped on `main`.** The Angular 22 remote is built and deployed as this repo's
   image: the full Element-like CS-API client (`MATRIX_ROUTES`), additive role tiers,
@@ -724,11 +731,16 @@ none of their own:
 - `VoicePlaybackService` and `ChatThemeRootDirective` are exercised only from other
   specs (`hug-character-panel`, `user-settings`).
 - `face-track.worker.ts` is covered by `npm run e2e:face`.
-- The rest are small modules: `legacy-read.ts`, `mount-route.ts`, `shell-events.ts`,
+- The rest are small modules: `mount-route.ts`, `shell-events.ts`,
   `wide-viewport.ts`, `vn/models/*` and `vn/util/svg-sanitize.client.ts`.
 
 Run the specs with `npm test` (`ng test matrix`, `ChromeHeadlessCI`, single run /
-`--watch=false`). They assert what this UI is responsible for: additive role-tier
+`--watch=false`). `npm test` first runs `npm run check:neutrality`
+(`scripts/check-neutrality.mjs`), which fails if any file in the repo names a
+deployment-private brand or domain; use placeholders such as `mesh.example` and
+`exampleorg` instead. `projects/matrix/src/test.ts` sets
+`__HUG_LEGACY_EVENT_BRANDS__` to `['exampleorg']` so the specs walk the full
+legacy read chain. They assert what this UI is responsible for: additive role-tier
 gating, the `matrix_domainlocked` SOCIAL LOCAL-ONLY behaviour, the **honest**
 AI-cloak badge states, and the keyboard and a11y contract (roving tabindex, focus
 restore, skip-link). Use `npm run test:watch` for the interactive watcher. The
@@ -937,7 +949,13 @@ Issues and pull requests are welcome. Pointers for working in this repo:
   remotes linked at the top of this README.
 - For anything security-relevant (auth, token custody, the AI-cloak media path,
   CSP/security headers), open an issue first so it can be discussed before a PR
-  lands.
+  lands. A vulnerability is different: report it privately, as
+  [Security](#security) explains.
+
+## Security
+
+Please report vulnerabilities privately, not in a public issue. See
+[`SECURITY.md`](SECURITY.md) for how.
 
 ## License
 

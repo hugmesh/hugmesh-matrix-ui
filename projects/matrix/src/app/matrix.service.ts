@@ -1,5 +1,5 @@
 import { Injectable, InjectionToken, inject } from '@angular/core';
-import { LEGACY_MESH_EVENT_CONTENT_FIELD } from './legacy-read';
+import { LEGACY_MESH_EVENT_CONTENT_FIELDS } from './legacy-read';
 
 /**
  * Homeserver name (e.g. `matrix.hugmesh.net`). NOT a base URL the client
@@ -114,12 +114,13 @@ export const MESH_EVENT_CONTENT_FIELD = 'com.hugmesh.mesh';
  * Pre-rebrand events persist the old field name; read-fallback only — never
  * written (the UI never writes this field at all — the bridge appservice
  * attaches it). Events bridged before the HugMesh rebrand carry their
- * provenance under this key (spelled ONLY in `legacy-read.ts`, the
- * consolidated legacy-read list); {@link MatrixService.mapEvent} reads the
- * canonical field first and falls back to this one (canonical wins when both
- * exist), so old bridged messages keep their "via LoRa mesh" badge.
+ * provenance under one of these keys (built ONLY in `legacy-read.ts` from the
+ * deployment's injected legacy brand; empty when none is set);
+ * {@link MatrixService.mapEvent} reads the canonical field first and falls
+ * back to these in order (canonical wins when both exist), so old bridged
+ * messages keep their "via LoRa mesh" badge.
  */
-export { LEGACY_MESH_EVENT_CONTENT_FIELD };
+export { LEGACY_MESH_EVENT_CONTENT_FIELDS };
 
 /** Matches senders inside the mesh bridge appservice's EXCLUSIVE `@mesh-.*`
  *  user namespace — only the bridge can register those users, so the sender
@@ -541,11 +542,13 @@ export class MatrixService {
     // bridged events (custom field); malformed/absent ⇒ undefined and the
     // timeline renders no mesh badge off the content (the @mesh-* sender
     // namespace still marks the event as bridged). Canonical field first, then
-    // the pre-rebrand legacy name (read-only) so old bridged events keep their
-    // badge.
-    const mesh = parseMeshEventInfo(
-      content[MESH_EVENT_CONTENT_FIELD] ?? content[LEGACY_MESH_EVENT_CONTENT_FIELD],
-    );
+    // each pre-rebrand legacy name (read-only, newest first) so old bridged
+    // events keep their badge.
+    let meshRaw = content[MESH_EVENT_CONTENT_FIELD];
+    for (const field of LEGACY_MESH_EVENT_CONTENT_FIELDS) {
+      meshRaw = meshRaw ?? content[field];
+    }
+    const mesh = parseMeshEventInfo(meshRaw);
     if (mesh) {
       ev.mesh = mesh;
     }

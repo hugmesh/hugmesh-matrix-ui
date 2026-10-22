@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import {
-  MatrixService, MATRIX_BASE_URL, BFF_BASE_URL, LEGACY_MESH_EVENT_CONTENT_FIELD, MESH_EVENT_CONTENT_FIELD,
+  MatrixService, MATRIX_BASE_URL, BFF_BASE_URL, LEGACY_MESH_EVENT_CONTENT_FIELDS, MESH_EVENT_CONTENT_FIELD,
   ReadReceiptMap, mergeReadReceipts, parseMeshEventInfo,
 } from './matrix.service';
 
@@ -568,7 +568,7 @@ describe('MatrixService (hsproxy — no homeserver token in the browser)', () =>
       .toEqual({ node: '!a1b2c3d4', device: 'default', channel: 0, registered: false, rssi: -92 });
   });
 
-  it('LEGACY read-fallback: a pre-rebrand LEGACY_MESH_EVENT_CONTENT_FIELD fragment still yields the badge, '
+  it('LEGACY read-fallback: a pre-rebrand LEGACY_MESH_EVENT_CONTENT_FIELDS fragment still yields the badge, '
     + 'and the canonical field wins when both exist', async () => {
     // Bridged events written before the rebrand carry their provenance under
     // the legacy field name forever (events are immutable) — the badge must
@@ -580,9 +580,9 @@ describe('MatrixService (hsproxy — no homeserver token in the browser)', () =>
       next_batch: 's2',
       rooms: { join: { '!r:test': { timeline: { events: [
         { event_id: '$l1', type: 'm.room.message', sender: '@mesh-a1b2c3d4:test', origin_server_ts: 5,
-          content: { msgtype: 'm.text', body: 'old air', [LEGACY_MESH_EVENT_CONTENT_FIELD]: legacy } },
+          content: { msgtype: 'm.text', body: 'old air', [LEGACY_MESH_EVENT_CONTENT_FIELDS[0]]: legacy } },
         { event_id: '$l2', type: 'm.room.message', sender: '@mesh-feedf00d:test', origin_server_ts: 6,
-          content: { msgtype: 'm.text', body: 'both', [MESH_EVENT_CONTENT_FIELD]: canonical, [LEGACY_MESH_EVENT_CONTENT_FIELD]: legacy } },
+          content: { msgtype: 'm.text', body: 'both', [MESH_EVENT_CONTENT_FIELD]: canonical, [LEGACY_MESH_EVENT_CONTENT_FIELDS[0]]: legacy } },
       ], limited: false } } } },
     }));
     const state = await service.sync('s1', 0);

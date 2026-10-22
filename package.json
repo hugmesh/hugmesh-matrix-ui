@@ -10,6 +10,8 @@
     "build": "ng build host && ng build matrix",
     "build:host": "ng build host",
     "build:matrix": "ng build matrix",
+    "check:neutrality": "node scripts/check-neutrality.mjs",
+    "pretest": "npm run check:neutrality",
     "test": "ng test matrix --watch=false --browsers=ChromeHeadlessCI",
     "test:watch": "ng test matrix",
     "test:host": "ng test host --watch=false --browsers=ChromeHeadlessCI",
