@@ -1,6 +1,6 @@
 {
   "name": "@hugmesh/matrix",
-  "version": "0.1.0",
+  "version": "0.3.0-beta.1",
   "description": "hugmesh.net demo host shell + the Matrix native-federation remote. Mastodon/login/admin remotes live in their own repos and federate in at runtime.",
   "license": "MIT",
   "private": true,
@@ -13,6 +13,7 @@
     "test": "ng test matrix --watch=false --browsers=ChromeHeadlessCI",
     "test:watch": "ng test matrix",
     "test:host": "ng test host --watch=false --browsers=ChromeHeadlessCI",
+    "test:release-version": "bash scripts/release-version.test.sh",
     "e2e:face": "node e2e/face-track/run.mjs",
     "e2e:face:clip": "node e2e/face-track/gen-clip.mjs"
   },

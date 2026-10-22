@@ -1,26 +1,110 @@
+# Release: builds and pushes the Matrix remote image to GHCR
+# (ghcr.io/hugmesh/hugmesh-matrix-ui).
+#
+# The GitLab pipeline (.gitlab-ci.yml) still builds the same Dockerfile for the
+# in-cluster registry; this workflow is the GitHub/GHCR path. What each trigger
+# publishes:
+#
+#   push to main                 -> :main and :sha-<12>. No version tag, no GitHub Release.
+#   push of tag v<version>       -> :<version>, :beta (betas only) and :sha-<12>,
+#                                   plus a GitHub Release marked prerelease, not latest.
+#   workflow_dispatch on main    -> same as a push to main.
+#   workflow_dispatch on a v tag -> re-runs that release. An image tag that already
+#                                   exists is never overwritten: the image is
+#                                   skipped and only a missing GitHub Release is made.
+#   anything else                -> refused by scripts/release-version.sh.
+#
+# The tag is the publish decision: it must equal package.json `.version` (and
+# both package-lock.json version fields), and the tagged commit must be on main.
+# `:latest` is never pushed. This replaces the old docker/metadata-action step,
+# whose default `latest=auto` flavor would have added :latest on a tag push.
+#
+# This workflow has no pull_request trigger and must never gain one. The runs-on
+# line sends a job to vars.RUNS_ON_PUBLISH (the self-hosted runner, a JSON array
+# such as ["self-hosted","Linux","X64"]) only for a non-PR run on main or a v* tag;
+# every other run, and every run when RUNS_ON_PUBLISH is unset, goes to hosted
+# ubuntu-latest. Deleting RUNS_ON_PUBLISH in this repo is the off switch. The
+# expression is not a security boundary against fork PRs (a fork's PR runs the
+# fork's copy of the workflow); the runner group settings are.
 name: Release
 
-# Manual-only. This workflow is intentionally inert until a human enables it —
-# no push/tag triggers, mirroring the fact that this repo's real release
-# pipeline (see .gitlab-ci.yml) still builds/pushes to the in-cluster GitLab
-# registry. This workflow instead publishes to GHCR and is meant to be flipped
-# on deliberately once this repo is ready to release from GitHub directly.
 on:
+  push:
+    branches: [main]
+    tags: ['v*']
   workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: hugmesh/hugmesh-matrix-ui
 
 jobs:
-  build-and-push:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
+  version:
+    runs-on: ${{ fromJSON(github.event_name != 'pull_request' && github.event_name != 'pull_request_target' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/studio-v')) && vars.RUNS_ON_PUBLISH || '"ubuntu-latest"') }}
+    outputs:
+      version: ${{ steps.guard.outputs.version }}
+      kind: ${{ steps.guard.outputs.kind }}
+      prerelease: ${{ steps.guard.outputs.prerelease }}
+      channel: ${{ steps.guard.outputs.channel }}
+      sha12: ${{ steps.sha.outputs.sha12 }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Version guard
+        id: guard
+        run: bash scripts/release-version.sh
+
+      - name: Tagged commit must be on main
+        if: steps.guard.outputs.kind == 'release'
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main; then
+            echo "::error::$GITHUB_REF_NAME points at $GITHUB_SHA, which is not on main"
+            exit 1
+          fi
+
+      - name: Short SHA
+        id: sha
+        run: echo "sha12=${GITHUB_SHA:0:12}" >> "$GITHUB_OUTPUT"
+
+  image:
+    needs: version
+    runs-on: ${{ fromJSON(github.event_name != 'pull_request' && github.event_name != 'pull_request_target' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/studio-v')) && vars.RUNS_ON_PUBLISH || '"ubuntu-latest"') }}
+    permissions:
+      contents: read
+      packages: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      KIND: ${{ needs.version.outputs.kind }}
+      CHANNEL: ${{ needs.version.outputs.channel }}
+      SHA12: ${{ needs.version.outputs.sha12 }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # A self-hosted runner shares $HOME with other jobs and with its owner.
+      # Keep this job's registry login and buildx builder in a private config
+      # dir so another job's logout cannot pull credentials out from under it.
+      - name: Use a private Docker config for this job
+        run: |
+          set -euo pipefail
+          cfg="$RUNNER_TEMP/docker-config"
+          mkdir -p "$cfg"
+          if [ -d "$HOME/.docker/cli-plugins" ]; then
+            ln -sfn "$HOME/.docker/cli-plugins" "$cfg/cli-plugins"
+          fi
+          echo "DOCKER_CONFIG=$cfg" >> "$GITHUB_ENV"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -32,16 +116,97 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract image metadata
+      - name: Refuse to overwrite a published version
+        id: exists
+        run: |
+          set -uo pipefail
+          if [ "$KIND" != release ]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          ref="$REGISTRY/$IMAGE_NAME:$VERSION"
+          if out="$(docker buildx imagetools inspect "$ref" 2>&1)"; then
+            if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+              echo "::notice::$ref is already published; this re-run skips the image and only completes the release"
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::error::$ref is already published. A published version is never overwritten: raise the beta number instead."
+            exit 1
+          fi
+          case "$out" in
+            *": not found"*)
+              echo "skip=false" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              # Fail closed: an auth or network error must not look like "absent".
+              echo "::error::could not tell whether $ref exists: $out"
+              exit 1
+              ;;
+          esac
+
+      - name: Compute tags and labels
         id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        if: steps.exists.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          image="$REGISTRY/$IMAGE_NAME"
+          if [ "$KIND" = release ]; then
+            tags="$image:$VERSION"
+            if [ -n "$CHANNEL" ]; then
+              tags="$tags"$'\n'"$image:$CHANNEL"
+            fi
+            label_version="$VERSION"
+          else
+            tags="$image:main"
+            label_version=main
+          fi
+          tags="$tags"$'\n'"$image:sha-$SHA12"
+          {
+            echo "tags<<EOF_TAGS"
+            echo "$tags"
+            echo "EOF_TAGS"
+            echo "labels<<EOF_LABELS"
+            echo "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+            echo "org.opencontainers.image.version=$label_version"
+            echo "org.opencontainers.image.revision=$GITHUB_SHA"
+            echo "EOF_LABELS"
+          } >> "$GITHUB_OUTPUT"
+          echo "Tags:"
+          echo "$tags"
 
       - name: Build and push image
+        if: steps.exists.outputs.skip != 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
+          pull: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+  github-release:
+    needs: [version, image]
+    if: needs.version.outputs.kind == 'release'
+    runs-on: ${{ fromJSON(github.event_name != 'pull_request' && github.event_name != 'pull_request_target' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/studio-v')) && vars.RUNS_ON_PUBLISH || '"ubuntu-latest"') }}
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ needs.version.outputs.version }}
+      PRERELEASE: ${{ needs.version.outputs.prerelease }}
+    steps:
+      - name: Create the GitHub Release
+        run: |
+          set -euo pipefail
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "::notice::release $GITHUB_REF_NAME already exists; leaving it alone"
+            exit 0
+          fi
+          flags=(--verify-tag --title "$GITHUB_REF_NAME"
+            --notes "Container image: $REGISTRY/$IMAGE_NAME:$VERSION")
+          if [ "$PRERELEASE" = true ]; then
+            flags+=(--prerelease --latest=false)
+          fi
+          gh release create "$GITHUB_REF_NAME" "${flags[@]}"

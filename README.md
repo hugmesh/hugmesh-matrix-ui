@@ -685,8 +685,8 @@ repos and live deployments are as last recorded.
 - **CI is GitLab.** The GitHub repo is pull-mirrored into the in-cluster GitLab.
   `.gitlab-ci.yml` builds and pushes the image and runs the OWASP pen-test stage
   (SCA + ZAP DAST, non-blocking). The only GitHub Actions workflow,
-  `.github/workflows/release.yml`, is manual-only (`workflow_dispatch`), publishes to
-  GHCR, and is not in the deploy/security path.
+  `.github/workflows/release.yml`, publishes the image to GHCR on a push to `main`
+  or a `v*` tag (see [Releasing](#releasing)). It is not in the deploy/security path.
 - **A/V is LAN/local-only.** Client ICE wiring is shipped, but no TURN relay or SFU
   is deployed; see the A/V note under [Routes & key components](#routes--key-components).
 - **nginx security headers and a nonce-based CSP shipped**; details and the
@@ -762,8 +762,8 @@ stylesheet from the theme environment. nginx serves it `no-store` at
 
 `.gitlab-ci.yml` builds and pushes the image to the in-cluster GitLab registry on
 default-branch and tag pushes (the GitHub repo is pull-mirrored into GitLab). There
-is no automatic GitHub Actions deploy path; the manual `release.yml` workflow
-publishes to GHCR only when someone runs it. The image carries **no** keys: KEYS
+is no automatic GitHub Actions deploy path; `release.yml` publishes to GHCR (see
+[Releasing](#releasing)) but deploys nothing. The image carries **no** keys: KEYS
 material is supplied from the USB at first boot. ArgoCD deploys it to the
 `hugmesh-frontend` namespace, fronted by the fe-gateway at `/social/matrix`.
 `projects/host` is **not** deployed.
@@ -797,6 +797,26 @@ repo.
   `hugmesh-generator`) into `.pentest-harness` if absent and runs `run-pentest.sh`
   against that URL.
 - Both are non-fatal locally, like the CI jobs' `allow_failure: true`.
+
+## Releasing
+
+The version lives in `package.json` (and `package-lock.json`, which must match). Today
+it is a beta, `MAJOR.MINOR.PATCH-beta.N`. `.github/workflows/release.yml` publishes
+`ghcr.io/hugmesh/hugmesh-matrix-ui`:
+
+- A push to `main` pushes `:main` and `:sha-<12 hex>`.
+- Pushing the tag `v<version>` (for example `v0.3.0-beta.1`, on a commit on `main`)
+  pushes `:<version>`, `:beta` and `:sha-<12 hex>`, and creates a GitHub Release
+  marked prerelease. A version tag that already exists in the registry is never
+  overwritten: raise `N` instead.
+- `:latest` is never pushed.
+- Jobs run on the self-hosted runner only when the repo variable `RUNS_ON_PUBLISH`
+  is set and the run is for `main` or a `v*` tag; otherwise they use hosted
+  `ubuntu-latest`. The workflow has no pull-request trigger.
+
+`scripts/release-version.sh` is the guard: it refuses a tag that does not match the
+version, a lock file that disagrees, a SNAPSHOT, a pre-release other than `-beta.N`,
+and any pull-request run. `npm run test:release-version` tests it.
 
 ## Known Gaps & Roadmap
 
