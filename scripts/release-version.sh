@@ -2,11 +2,17 @@
 # release-version.sh — the version guard for .github/workflows/release.yml.
 #
 # Decides what kind of publish this run is, from the event and the ref, and
-# refuses anything that is not one of the two allowed shapes:
+# refuses anything that is not one of the three allowed shapes:
 #
-#   refs/heads/main          -> kind=main     (image tags :main + :sha-<12>)
-#   refs/tags/v<version>     -> kind=release  (image tags :<version> + :beta + :sha-<12>,
-#                                              plus a GitHub prerelease)
+#   refs/heads/main          -> kind=main
+#   refs/heads/release/*     -> kind=branch
+#   refs/tags/v<version>     -> kind=release
+#
+# The release channel (beta from main, stable from release/X.Y), the branch
+# rules and the image tags are decided by scripts/release-channel.sh, which the
+# workflow runs after this guard with the version it printed. That script also
+# refuses a release/<name> that is not release/X.Y, and a release/X.Y branch
+# whose version is not X.Y.*.
 #
 # The version source is package.json `.version`. package-lock.json must carry
 # the same string in both of its version fields, so the image, the lock and the
@@ -87,6 +93,9 @@ case "$ref" in
   refs/heads/main)
     kind=main
     ;;
+  refs/heads/release/*)
+    kind=branch
+    ;;
   refs/tags/v*)
     tag_version=${ref#refs/tags/v}
     [ "$tag_version" = "$pkg_version" ] ||
@@ -94,7 +103,7 @@ case "$ref" in
     kind=release
     ;;
   *)
-    fail "ref '$ref' publishes nothing: only refs/heads/main and refs/tags/v<version> do"
+    fail "ref '$ref' publishes nothing: only refs/heads/main, refs/heads/release/X.Y and refs/tags/v<version> do"
     ;;
 esac
 
@@ -104,8 +113,9 @@ case "$pkg_version" in
     channel=beta
     ;;
   *)
-    # A final release. Nothing has reached one yet; whether it also moves
-    # :latest is a decision for that day, so no channel tag is pushed.
+    # A final (stable) version. `channel` here only marks a beta version; the
+    # floating tags of a stable release (:X.Y, and :latest for the newest
+    # stable line) are decided by scripts/release-channel.sh, not here.
     prerelease=false
     channel=
     ;;

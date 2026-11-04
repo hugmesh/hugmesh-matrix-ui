@@ -812,23 +812,34 @@ repo.
 
 ## Releasing
 
-The version lives in `package.json` (and `package-lock.json`, which must match). Today
-it is a beta, `MAJOR.MINOR.PATCH-beta.N`. `.github/workflows/release.yml` publishes
-`ghcr.io/hugmesh/hugmesh-matrix-ui`:
+The version lives in `package.json` (and `package-lock.json`, which must match):
+`MAJOR.MINOR.PATCH-beta.N` on `main`, `MAJOR.MINOR.PATCH` on a `release/X.Y` branch.
+`.github/workflows/release.yml` publishes `ghcr.io/hugmesh/hugmesh-matrix-ui`, and the
+tag decides the channel:
 
 - A push to `main` pushes `:main` and `:sha-<12 hex>`.
-- Pushing the tag `v<version>` (for example `v0.3.0-beta.1`, on a commit on `main`)
-  pushes `:<version>`, `:beta` and `:sha-<12 hex>`, and creates a GitHub Release
-  marked prerelease. A version tag that already exists in the registry is never
-  overwritten: raise `N` instead.
-- `:latest` is never pushed.
+- A push to `release/X.Y` pushes `:sha-<12 hex>` only. That branch must carry an
+  `X.Y.*` version; any other `release/<name>` is refused.
+- The beta tag `vX.Y.Z-beta.N` (on a commit on `main`) pushes `:X.Y.Z-beta.N`, `:beta`
+  and `:sha-<12 hex>`, and creates a GitHub Release marked prerelease, never Latest.
+- The stable tag `vX.Y.Z` (on a commit on `release/X.Y`) pushes `:X.Y.Z`, `:X.Y`,
+  `:latest` and `:sha-<12 hex>`, and creates a GitHub Release marked Latest. A patch
+  on an older line (a newer stable is already published) moves `:X.Y` but not
+  `:latest`, and its release is not marked Latest.
+- `:X.Y.Z` is never overwritten: raise `N` for a beta, or cut the next patch from
+  `release/X.Y` for a stable. The floating `:beta`, `:X.Y` and `:latest` move.
+  Every pushed tag is checked against the signed digest.
 - Jobs run on the self-hosted runner only when the repo variable `RUNS_ON_PUBLISH`
-  is set and the run is for `main` or a `v*` tag; otherwise they use hosted
-  `ubuntu-latest`. The workflow has no pull-request trigger.
+  is set and the run is for `main` or a `v*` tag; otherwise (including
+  `release/X.Y`) they use hosted `ubuntu-latest`. The workflow has no pull-request
+  trigger.
 
-`scripts/release-version.sh` is the guard: it refuses a tag that does not match the
+`scripts/release-version.sh` checks the run: it refuses a tag that does not match the
 version, a lock file that disagrees, a SNAPSHOT, a pre-release other than `-beta.N`,
 and any pull-request run. `npm run test:release-version` tests it.
+`scripts/release-channel.sh` decides the channel, the branch rules and the image tags;
+`npm run test:release-channel` tests it and the workflow steps that use it. The
+workflow's version job runs both tests before it decides anything.
 
 ## Known Gaps & Roadmap
 

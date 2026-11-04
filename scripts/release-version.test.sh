@@ -88,8 +88,13 @@ expect_ok "dispatch on the matching tag re-runs the release" "$good" workflow_di
 
 final="$work/final"
 make_repo "$final" 0.2.0 0.2.0 0.2.0
-expect_ok "a final version is not a prerelease and moves no channel" "$final" push \
+expect_ok "a final version is not a prerelease (release-channel.sh decides its tags)" "$final" push \
   refs/tags/v0.2.0 kind=release prerelease=false channel=
+
+expect_ok "push to a release branch is a branch build" "$final" push refs/heads/release/0.2 \
+  version=0.2.0 kind=branch prerelease=false
+expect_ok "dispatch on a release branch is a branch build" "$final" workflow_dispatch \
+  refs/heads/release/0.2 kind=branch
 
 expect_refused "tag that does not match package.json" "$good" push refs/tags/v0.2.0-beta.2 \
   "does not match package.json version"
