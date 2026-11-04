@@ -16,6 +16,7 @@
     "test:watch": "ng test matrix",
     "test:host": "ng test host --watch=false --browsers=ChromeHeadlessCI",
     "test:release-version": "bash scripts/release-version.test.sh",
+    "test:release-channel": "bash scripts/test-release-channel.sh",
     "e2e:face": "node e2e/face-track/run.mjs",
     "e2e:face:clip": "node e2e/face-track/gen-clip.mjs"
   },
