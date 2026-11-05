@@ -789,15 +789,20 @@ are `allow_failure: true` (additive, non-blocking) and gated to the default bran
 and merge requests. `pentest:sca` is self-contained: Dependency-Check scans this
 repo's checkout directly.
 
-**Caveat — DAST and load need the shared harness.** `pentest:dast` (ZAP plus the
+**DAST and load fetch the shared harness at CI time.** `pentest:dast` (ZAP plus the
 nuclei boundary templates via `run-pentest.sh --nuclei`) and the opt-in
 `pentest:load` k6 leg (gated on `PENTEST_LOAD == "1"` through a GitLab Schedule or
 manual trigger, never a plain MR) run `${PENTEST_HARNESS_DIR}/run-pentest.sh`. This
-repo does **not** vendor that script (the default dir is `tests/pentest`). Until the
-harness is vendored or fetched here, or `PENTEST_HARNESS_DIR` points at a fetched
-copy, those jobs fail fast at the harness lookup. They are non-blocking, but not
-scanning yet. No executed pipeline run of this stage has been observed from this
-repo.
+repo does **not** vendor that script, so both jobs clone `hugmesh-generator` (`main`,
+depth 1, the same ref the `include:` pins) into `.pentest-harness` and set
+`PENTEST_HARNESS_DIR` to `${CI_PROJECT_DIR}/.pentest-harness/tests/pentest`. The
+clone is prepended to the base job's `before_script` with
+`!reference [.pentest-dast-base, before_script]`, so the base's missing-harness
+FATAL and pinned-nuclei install still run after it. `lint:pentest-harness` runs
+`scripts/check-pentest-harness.test.sh`, which fails if either job loses the
+override, the clone or the splice, and mutation-tests that guard. The clone needs
+`hugmesh-generator` to allow this project's `CI_JOB_TOKEN`; that, and a real
+`pentest:dast` run, have not been observed from this repo yet.
 
 **Running it locally.** The repo-root `Makefile` mirrors this stage:
 `make pentest` (= `make pentest-sca pentest-dast`).

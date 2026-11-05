@@ -6,3 +6,6 @@
 *.log
 .DS_Store
 .env
+
+# Shared pen-test harness, fetched by CI / `make pentest-dast`
+.pentest-harness/
