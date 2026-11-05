@@ -711,8 +711,9 @@ npm test                  # ng test matrix (ChromeHeadlessCI, single run)
 
 To try federation locally, serve the remote (`ng serve matrix`, :4201) and the host
 (`npm start`, :4200). The host's `projects/host/src/assets/federation.manifest.json`
-points the `login`/`matrix`/`mastodon`/`admin`/`mod`/`user`/`apidocs` remotes at
-`localhost:4203`, `4201`, `4202`, `4204`, `4205`, `4206`, `4207` respectively. In
+points the `login`/`matrix`/`mastodon`/`admin`/`mod`/`user`/`apidocs`/`games`
+remotes at `localhost:4203`, `4201`, `4202`, `4204`, `4205`, `4206`, `4207`,
+`4208` respectively (`4208` is `ng serve games` in hugmesh-games/games-ui). In
 the cluster that manifest is replaced with the per-nginx remote URLs.
 
 **Known break (checked 2026-10-07 on `main`):** `npm start`, `ng serve host` and
@@ -871,8 +872,10 @@ so readers do not mistake planned platform work for shipped UI.
   need the shared harness at `PENTEST_HARNESS_DIR` and no pipeline run has been
   verified. See [Deploy](#deploy).
 - 🚧 **The games origin serves nothing: chat3d is unreachable in every real
-  deployment, and `/games` has no remote to mount.** Two surfaces, one missing
-  dependency. Neither should read as shipped.
+  deployment.** The `/games` and `/games/admin` mounts in the demo host are
+  wired to the real games-ui remote (next bullet), but the origin that remote
+  and chat3d both live behind is not served yet, so neither should read as
+  shipped.
   - **Shadows of the Net (this repo's deployed remote).** The client is ✅
     shipped: `projects/matrix/src/app/chat3d/**`, the `rooms/:roomId/chat3d` route,
     and the moderator enable toggle in `room-settings.component`. But
@@ -890,15 +893,18 @@ so readers do not mistake planned platform work for shipped UI.
     predates the `systems.hugmesh.chat3d*` → `net.hugmesh.chat3d*` rename, and the
     fact that no seed, bootstrap or fixture ever turns the room flag on. The
     moderator control exists here, but somebody still has to click it.
-  - **`/games` and `/games/admin` (demo host only, issue #2).** Both are
-    manifest-driven `loadChildren` mounts (`games-remote.routes.ts`). Register a
-    `games` or `games-admin` entry in `federation.manifest.json` and the remote's
-    exposed `./routes` mounts with no code change. **No such remote exists anywhere
-    on the platform** (no `hugmesh-games-ui` repo, no entry in any manifest), so
-    what renders is the TODO placeholder, by design, until one ships. This surface
-    is `projects/host`, the local dev/E2E shell (see the table at the top), so it is
-    not in the deployed image. The production shell (`hugmesh-host-shell`) carries
-    its own copy of the same placeholders.
+  - **`/games` and `/games/admin` (demo host only, issue #2).** Both mount the
+    ONE `games` native-federation remote, hugmesh-games/games-ui, through
+    `loadChildren` (`games-remote.routes.ts`): `/games` loads its exposed
+    `./routes` (`GAMES_ROUTES`) behind `gamesGuard`, `/games/admin` loads
+    `./admin-routes` (`GAMES_ADMIN_ROUTES`) behind `gamesAdminGuard`, and
+    `federation.manifest.json` points `games` at `localhost:4208` (`ng serve
+    games`). The TODO placeholders are gone; a missing manifest row or a broken
+    remote now fails the way any sibling remote does. This is the same wiring
+    the production shell (`hugmesh-host-shell`) landed in b3c4fc76. This surface
+    is `projects/host`, the local dev/E2E shell (see the table at the top), so it
+    is not in the deployed image; whether a live mesh actually serves the remote
+    is the origin question above (hugmesh-generator #470).
 
 - 🚧 **Piper TTS synth seam for character voice.** The **client side is ✅
   shipped**: `VoiceSynthService`, `VoicePlaybackService` and

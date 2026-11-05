@@ -3,17 +3,7 @@ import { loadRemoteModule } from '@angular-architects/native-federation';
 import { adminGuard } from './admin.guard';
 import { registeredGuard } from './registration.guard';
 import { modGuard } from './mod.guard';
-import { gamesGuard } from './games.guard';
-import { gamesAdminGuard } from './games-admin.guard';
-import {
-  GAMES_ADMIN_REMOTE,
-  GAMES_ADMIN_ROUTES_CONST,
-  GAMES_REMOTE,
-  GAMES_ROUTES_CONST,
-  gamesAdminPlaceholderRoutes,
-  gamesPlaceholderRoutes,
-  loadGamesChildRoutes,
-} from './games-remote.routes';
+import { GAMES_MOUNTS, gamesMountRoute } from './games-remote.routes';
 
 /**
  * Host shell routes. Every feature is a native-federation remote (its own repo
@@ -26,16 +16,15 @@ import {
  *   mod      → hugmesh-mod-ui         (moderation queue + actions)
  *   user     → hugmesh-user-ui        (user profile / settings / self-service)
  *   apidocs  → hugmesh-api-docs       (OpenAPI / developer documentation)
+ *   games    → hugmesh-games/games-ui  remote 'games' exposes ./routes (GAMES_ROUTES)
+ *                                      AND ./admin-routes (GAMES_ADMIN_ROUTES)
  * Matrix/Mastodon/user require full registration; Admin requires the Casdoor
  * admin role; mod requires the Casdoor mod (or admin) role (modGuard).
  *
- * Phase 8/10 → issue #2: games/games-admin are MANIFEST-DRIVEN federated
- * mounts. When `federation.manifest.json` registers the `games` /
- * `games-admin` remote, `loadChildren` mounts its exposed './routes' exactly
- * like every sibling remote above; while unregistered (no games UI remote has
- * been built yet) the loader falls back to the honest TODO placeholder
- * (GamesPlaceholderComponent / GamesAdminPlaceholderComponent) — never a
- * silent 404 or a faked surface. See games-remote.routes.ts for the contract.
+ * Issue #2: /games and /games/admin mount the ONE `games` remote's two exposed
+ * modules (GAMES_MOUNTS in games-remote.routes.ts, mirroring hugmesh-host-shell
+ * b3c4fc76). The former TODO placeholders are gone; a missing manifest row or a
+ * broken remote fails the way any sibling remote does.
  */
 const remote = (remoteName: string, exposed = './routes') => (key: string) =>
   loadRemoteModule(remoteName, exposed).then((m) => m[key]);
@@ -51,17 +40,8 @@ export const routes: Routes = [
   { path: 'mod', canActivate: [modGuard], loadChildren: () => remote('mod')('MOD_ROUTES') },
   { path: 'user', canActivate: [registeredGuard], loadChildren: () => remote('user')('USER_ROUTES') },
   { path: 'apidocs', loadChildren: () => remote('apidocs')('APIDOCS_ROUTES') },
-  // 'games/admin' MUST precede 'games' (specific-before-general).
-  {
-    path: 'games/admin',
-    canActivate: [gamesAdminGuard],
-    loadChildren: () =>
-      loadGamesChildRoutes(GAMES_ADMIN_REMOTE, GAMES_ADMIN_ROUTES_CONST, gamesAdminPlaceholderRoutes),
-  },
-  {
-    path: 'games',
-    canActivate: [gamesGuard],
-    loadChildren: () => loadGamesChildRoutes(GAMES_REMOTE, GAMES_ROUTES_CONST, gamesPlaceholderRoutes),
-  },
+  // Games member + admin mounts of the single 'games' remote. The table keeps
+  // 'games/admin' before 'games' (specific-before-general) and the guards.
+  ...GAMES_MOUNTS.map(gamesMountRoute),
   { path: '', children: [] },
 ];
