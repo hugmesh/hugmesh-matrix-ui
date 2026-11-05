@@ -1,51 +1,50 @@
-import { Routes } from '@angular/router';
+import { CanActivateFn, Route, Routes } from '@angular/router';
 import { loadRemoteModule } from '@angular-architects/native-federation';
 
+import { gamesGuard } from './games.guard';
+import { gamesAdminGuard } from './games-admin.guard';
+
 /**
- * Manifest-driven games / games-admin mounts (issue #2).
+ * Games remote mounts (issue #2) — /games and /games/admin are TWO exposed
+ * modules of ONE native-federation remote, hugmesh-games/games-ui, whose
+ * federation name is `games` (its `federation.config.js`):
  *
- * The /games and /games/admin routes are now REAL federated mounts with the
- * placeholder demoted to an "unregistered" fallback: at navigation time the
- * loader re-reads the SAME static federation manifest `main.ts` booted
- * `initFederation()` from, and
+ *   './routes'       -> GAMES_ROUTES        mounted at /games        (gamesGuard)
+ *   './admin-routes' -> GAMES_ADMIN_ROUTES  mounted at /games/admin  (gamesAdminGuard)
  *
- *   - remote REGISTERED in the manifest  -> `loadRemoteModule(...)` and mount
- *     the exported routes const, exactly like every sibling remote
- *     (login/matrix/admin/...). A load failure PROPAGATES to the router the way
- *     a broken sibling remote does — falling back to the "not built yet"
- *     placeholder for a remote that exists-but-is-broken would be dishonest.
- *   - remote NOT registered (or the manifest is unreadable) -> the honest TODO
- *     placeholder, preserving the honest-disclosure invariant: a ROLE_GAMES /
- *     derived ROLE_GAMES_ADMIN holder sees an explicit TODO, never a silent 404
- *     or a faked surface.
+ * This mirrors hugmesh-host-shell commit b3c4fc76, which replaced the same two
+ * TODO placeholders in the production shell. The manifest key (`games`), the
+ * remote's self-declared name and the exposed-module keys above are a
+ * cross-repo contract with games-ui: change any one and the games views break
+ * only at `loadRemoteModule()` time, never at build time. There is no separate
+ * `games-admin` remote any more; the old `GAMES_ADMIN_REMOTE` key is retired.
  *
- * Remote contract (mirrors the './routes' convention of every sibling):
- *   games       -> hugmesh-games-ui        exposes './routes' -> GAMES_ROUTES
- *   games-admin -> hugmesh-games-admin-ui  exposes './routes' -> GAMES_ADMIN_ROUTES
- *
- * Neither remote exists yet (2026-09: no hugmesh-games-ui / games-admin repo;
- * hugmesh-games' frontend is its own standalone HOST, not a remote), so neither
- * is registered in `assets/federation.manifest.json`. The day one ships, adding
- * its manifest entry mounts it here with NO code change; the fallback
- * components + their specs can then be deleted.
+ * Loader shape: at navigation time the loader re-reads the SAME static
+ * federation manifest `main.ts` booted `initFederation()` from and hands the
+ * entry URL to native-federation as `remoteEntry`. The remote now exists, so
+ * there is no "not built yet" fallback: a missing manifest row or a broken
+ * remote both PROPAGATE to the router exactly like a broken sibling remote
+ * (login/matrix/admin/...). A faked "coming soon" surface for a remote that
+ * ships would be dishonest in the other direction.
  *
  * NOTE (runtime behavior, MEASURED against the installed
  * @softarc/native-federation-runtime — see `remoteLoadOptions()`): the
  * name-only `loadRemoteModule(name, exposed)` form throws `unknown remote` for
  * any remote `initFederation()` did not process at boot. This loader therefore
  * passes the manifest entry as `remoteEntry`, which `ensureRemoteInitialized()`
- * uses to fetch-and-register a not-yet-registered remote on demand — so the
- * manifest entry really is the single switch, even when the entry appears
- * without a host rebuild/reboot. It deliberately does NOT also pass
- * `remoteName`; `remoteLoadOptions()` records why, with the measurement.
+ * uses to fetch-and-register a not-yet-registered remote on demand. It
+ * deliberately does NOT also pass `remoteName`; `remoteLoadOptions()` records
+ * why, with the measurement (the PR #16 fix, kept verbatim).
  */
 
 /** Same asset `main.ts` boots `initFederation()` from — keep the two in sync. */
 export const FEDERATION_MANIFEST_URL = 'assets/federation.manifest.json';
 
+/** Manifest key == games-ui's federation `name` == the remote's self-declared name. */
 export const GAMES_REMOTE = 'games';
+export const GAMES_EXPOSED = './routes';
 export const GAMES_ROUTES_CONST = 'GAMES_ROUTES';
-export const GAMES_ADMIN_REMOTE = 'games-admin';
+export const GAMES_ADMIN_EXPOSED = './admin-routes';
 export const GAMES_ADMIN_ROUTES_CONST = 'GAMES_ADMIN_ROUTES';
 
 /** Injectable seams so specs can drive the loader without spying the frozen
@@ -108,10 +107,10 @@ export async function fetchFederationManifest(): Promise<Record<string, string>>
  *   games     | yes             | no                | mounts
  *   games-ui  | yes             | no                | mounts
  *
- * The broken row is the likely real configuration: the placeholder already
- * names the future remote `hugmesh-games-ui`, and a native-federation remote's
- * `federation.config.js` name is conventionally its own package name, not the
- * host's manifest key.
+ * games-ui's federation.config.js names itself `games` today, so the broken
+ * row is not the live configuration — but the omission is kept because it is
+ * the only shape that mounts in EVERY row, including a future rename, and the
+ * failure mode of the other shape is a successful fetch followed by a throw.
  *
  * `remoteName` is still a parameter (and is still asserted by the specs)
  * because it is what makes the failure message name the right remote; it is
@@ -165,45 +164,57 @@ export const DEFAULT_DEPS: GamesRemoteDeps = {
 };
 
 /**
- * loadChildren body for a games-namespace mount: the real remote when the
- * manifest registers `remoteName`, the honest placeholder otherwise.
+ * loadChildren body for one games-namespace mount: resolve the `games` entry
+ * from the manifest, load `exposedModule` from it, return its `routesConst`.
+ * Every failure (manifest unreadable, `games` row missing, remote load error,
+ * wrong export) rejects — the router then reports it like any sibling remote.
  */
 export async function loadGamesChildRoutes(
-  remoteName: string,
+  exposedModule: string,
   routesConst: string,
-  placeholder: () => Promise<Routes>,
   deps: GamesRemoteDeps = DEFAULT_DEPS,
 ): Promise<Routes> {
-  let entry: string | undefined;
-  try {
-    const manifest = await deps.fetchManifest();
-    entry = manifest?.[remoteName];
-  } catch {
-    // Manifest unreadable -> the host cannot know a remote exists; the honest
-    // placeholder beats a guaranteed-broken mount. (initFederation already
-    // surfaced the underlying failure at boot.)
-    entry = undefined;
-  }
+  const manifest = await deps.fetchManifest();
+  const entry = manifest?.[GAMES_REMOTE];
   if (typeof entry !== 'string' || entry.length === 0) {
-    return placeholder();
+    throw new Error(
+      `remote '${GAMES_REMOTE}' is not registered in ${FEDERATION_MANIFEST_URL}; ` +
+        `cannot load '${exposedModule}'`,
+    );
   }
-  // Registered: behave exactly like a sibling remote mount — failures propagate.
-  const mod = await deps.loadRemote(remoteName, entry, './routes');
+  const mod = await deps.loadRemote(GAMES_REMOTE, entry, exposedModule);
   const routes = mod[routesConst];
   if (!Array.isArray(routes)) {
-    throw new Error(`remote '${remoteName}' './routes' did not export ${routesConst}`);
+    throw new Error(`remote '${GAMES_REMOTE}' '${exposedModule}' did not export ${routesConst}`);
   }
   return routes as Routes;
 }
 
-/** Unregistered-remote fallback for /games (see GamesPlaceholderComponent). */
-export async function gamesPlaceholderRoutes(): Promise<Routes> {
-  const { GamesPlaceholderComponent } = await import('./games-placeholder.component');
-  return [{ path: '', component: GamesPlaceholderComponent }];
+/** One row of the games mount table: which exposed module lands on which path. */
+export interface GamesMountSpec {
+  readonly path: string;
+  readonly exposed: string;
+  readonly routesConst: string;
+  readonly canActivate: readonly CanActivateFn[];
 }
 
-/** Unregistered-remote fallback for /games/admin (see GamesAdminPlaceholderComponent). */
-export async function gamesAdminPlaceholderRoutes(): Promise<Routes> {
-  const { GamesAdminPlaceholderComponent } = await import('./games-admin-placeholder.component');
-  return [{ path: '', component: GamesAdminPlaceholderComponent }];
+/**
+ * The games mount table, data-driven like host-shell's REMOTE_ROUTES rows.
+ * ORDER MATTERS: 'games/admin' MUST precede 'games' (specific-before-general)
+ * or the member mount's loadChildren swallows the admin path. Guards are the
+ * ones the placeholders carried: gamesGuard on the entry point, the derived
+ * gamesAdminGuard on the admin console.
+ */
+export const GAMES_MOUNTS: readonly GamesMountSpec[] = [
+  { path: 'games/admin', exposed: GAMES_ADMIN_EXPOSED, routesConst: GAMES_ADMIN_ROUTES_CONST, canActivate: [gamesAdminGuard] },
+  { path: 'games', exposed: GAMES_EXPOSED, routesConst: GAMES_ROUTES_CONST, canActivate: [gamesGuard] },
+];
+
+/** Turn a mount-table row into the Angular route that lazy-loads it. */
+export function gamesMountRoute(spec: GamesMountSpec): Route {
+  return {
+    path: spec.path,
+    canActivate: [...spec.canActivate],
+    loadChildren: () => loadGamesChildRoutes(spec.exposed, spec.routesConst),
+  };
 }
