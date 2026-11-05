@@ -44,12 +44,43 @@ pentest:sca:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 
+#
+# HARNESS: FETCHED AT CI TIME, NOT VENDORED (same shape as hugmesh-api-docs).
+# run-pentest.sh executes from the INCLUDING repo's checkout (PENTEST_HARNESS_DIR,
+# default `tests/pentest`), which this Angular remote does not have — inheriting
+# the template alone gives a `pentest:dast` that dies at the base's harness FATAL
+# having scanned nothing, and allow_failure turns that into a shrug next to a job
+# name that reads as "DAST ran". So the job clones the generator at the SAME ref
+# the `include:` above pins (main), which keeps template and harness in lockstep
+# by construction, and points PENTEST_HARNESS_DIR at the fetched tree.
+#
+# The clone is PREPENDED to the base's before_script via !reference, never in
+# place of it: `extends:` REPLACES arrays, so a bare `before_script:` override
+# would silently drop the base's missing-harness FATAL and its pinned-nuclei
+# install (leaving `run-pentest.sh --nuclei` to self-skip). Fetch first, so the
+# FATAL asserts against the fetched tree and still fails readably if the
+# generator ever moves tests/pentest.
+#
+# The org base is derived from CI_REPOSITORY_URL, which already carries the
+# read-only CI job token, so no credential is committed. Runtime prerequisite
+# this file cannot assert: hugmesh/hugmesh-generator must allowlist this project
+# for CI_JOB_TOKEN access, or the clone fails (non-blocking, but no scan).
+#
+# lint:pentest-harness (below) asserts both jobs keep the override, the clone and
+# the splice.
 pentest:dast:
   extends: .pentest-dast-baseline
   allow_failure: true
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+  variables:
+    PENTEST_HARNESS_DIR: "${CI_PROJECT_DIR}/.pentest-harness/tests/pentest"
+  before_script:
+    - rm -rf "${CI_PROJECT_DIR}/.pentest-harness"
+    - ORG_BASE="$(dirname "${CI_REPOSITORY_URL}")"
+    - git clone --depth 1 --branch main "${ORG_BASE}/hugmesh-generator.git" "${CI_PROJECT_DIR}/.pentest-harness"
+    - !reference [.pentest-dast-base, before_script]
 
 # pentest:load — the OPT-IN k6 load / DoS-resilience run from the same shared
 # harness (run-pentest.sh --load). OFF by default: the hidden .pentest-load job
@@ -57,8 +88,40 @@ pentest:dast:
 # plain MR, so this adds zero cost to normal pipelines. Completes the platform
 # pen-test standard here (SCA + DAST + nuclei — the baseline DAST job already
 # runs the committed nuclei boundary templates via --nuclei — plus k6 load).
+# Same harness fetch + before_script splice as pentest:dast above; .pentest-load
+# also extends .pentest-dast-base, so the same FATAL + nuclei install follow the
+# clone. Its PENTEST_LOAD gate (rules:) and allow_failure stay INHERITED — this
+# job restates neither, so the opt-in gate cannot be dropped by array replacement.
 pentest:load:
   extends: .pentest-load
+  variables:
+    PENTEST_HARNESS_DIR: "${CI_PROJECT_DIR}/.pentest-harness/tests/pentest"
+  before_script:
+    - rm -rf "${CI_PROJECT_DIR}/.pentest-harness"
+    - ORG_BASE="$(dirname "${CI_REPOSITORY_URL}")"
+    - git clone --depth 1 --branch main "${ORG_BASE}/hugmesh-generator.git" "${CI_PROJECT_DIR}/.pentest-harness"
+    - !reference [.pentest-dast-base, before_script]
+
+# lint:pentest-harness — offline guard over the two jobs above. pentest:dast and
+# pentest:load are allow_failure by policy, so nothing in the pipeline view tells
+# "scanned and found nothing" from "never had a harness to run". This job fails
+# if either job loses the PENTEST_HARNESS_DIR override, the generator clone, or
+# the trailing `!reference [.pentest-dast-base, before_script]` splice, and then
+# mutation-tests the guard so a green tick means the checks can actually fail.
+# Pure bash, no image, no network.
+#
+# Placed in the `pentest` stage with `needs: []` on purpose: it starts at once,
+# and because no later stage exists, a red guard reds the pipeline/MR without
+# gating build:image or the scans themselves as a side effect of stage order.
+lint:pentest-harness:
+  stage: pentest
+  needs: []
+  tags: [hugmesh-x86]
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+  script:
+    - bash scripts/check-pentest-harness.test.sh
 
 # -----------------------------------------------------------------------------
 # Playwright + BDD (Gherkin) end-to-end suite. PURE TEST CODE under ./e2e — it
