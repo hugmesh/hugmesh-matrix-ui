@@ -802,7 +802,10 @@ FATAL and pinned-nuclei install still run after it. `lint:pentest-harness` runs
 `scripts/check-pentest-harness.test.sh`, which fails if either job loses the
 override, the clone or the splice, and mutation-tests that guard. The guard loads
 `.gitlab-ci.yml` with PyYAML and refuses any duplicate key or `<<` merge key,
-since GitLab silently keeps the last of a repeated key. Running it locally needs
+since GitLab silently keeps the last of a repeated key. Keys are compared the
+way GitLab reads them: GitLab symbolises keys, so a plain `:allow_failure` (also
+`:"allow_failure"` / `:'allow_failure'`) is the same key as `allow_failure`, and
+the guard normalises it before checking anything. Running it locally needs
 `python3` with PyYAML. The clone needs
 `hugmesh-generator` to allow this project's `CI_JOB_TOKEN`; that, and a real
 `pentest:dast` run, have not been observed from this repo yet.
