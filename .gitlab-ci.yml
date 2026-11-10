@@ -108,7 +108,10 @@ pentest:load:
 # if either job loses the PENTEST_HARNESS_DIR override, the generator clone, or
 # the trailing `!reference [.pentest-dast-base, before_script]` splice, and then
 # mutation-tests the guard so a green tick means the checks can actually fail.
-# Pure bash, no image, no network.
+# The guard parses this file with a YAML loader (PyYAML) and refuses duplicate
+# keys and merge keys, because GitLab keeps the LAST of a repeated key and a
+# line-based read does not; hence python:3 + pyyaml, as the generator's lint
+# jobs do. Without PyYAML the guard exits 2 and this job goes red, not green.
 #
 # Placed in the `pentest` stage with `needs: []` on purpose: it starts at once,
 # and because no later stage exists, a red guard reds the pipeline/MR without
@@ -117,9 +120,12 @@ lint:pentest-harness:
   stage: pentest
   needs: []
   tags: [hugmesh-x86]
+  image: python:3
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+  before_script:
+    - pip install --quiet pyyaml
   script:
     - bash scripts/check-pentest-harness.test.sh
 
