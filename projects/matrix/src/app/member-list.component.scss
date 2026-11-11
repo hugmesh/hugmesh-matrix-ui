@@ -1,4 +1,6 @@
-.member-list{padding:8px;width:300px}
+// border-box + max-width: inside the shell's members pane (clamp(200px,18vw,320px))
+// a fixed 300px + padding overflowed the pane and clipped the right edge ("← Back").
+.member-list{padding:8px;width:300px;max-width:100%;box-sizing:border-box}
 header{display:flex;justify-content:space-between;align-items:center}
 .invite-row{display:flex;gap:4px;margin:6px 0}
 .invite-row input{flex:1}

@@ -9,8 +9,10 @@
        no Matrix access → nothing here can work for this account. -->
   <div *ngIf="access() === 'not-member'" class="access-note" data-testid="member-list-not-member" role="status">
     <p class="access-title">You are not a member of this room.</p>
-    <p>Its member list is visible to members only.
-      <a [routerLink]="['rooms', roomId()]" [relativeTo]="mount">Open the room</a> to join it if it is public.</p>
+    <!-- Beside the room view (the shell's members pane) the Join prompt is already
+         on screen; on the standalone route, point back to it. -->
+    <p>Its member list is visible to members only.<ng-container *ngIf="!roomIdInput">
+      <a [routerLink]="['rooms', roomId()]" [relativeTo]="mount">Open the room</a> to join it if it is public.</ng-container></p>
   </div>
   <div *ngIf="access() === 'denied'" class="access-note" data-testid="matrix-access-denied" role="alert">
     <p class="access-title">Matrix is not available to you</p>

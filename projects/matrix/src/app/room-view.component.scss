@@ -39,3 +39,8 @@
 .not-member .join[disabled]{cursor:progress;opacity:.7}
 .not-member .field-help{font-size:13px}
 .not-member .join-status{margin-top:6px}
+// Touch target: the Join button grows to the 44px minimum on phones / coarse pointers
+// (after the base rule above, so it wins at equal specificity).
+@media (max-width: t.$bp-md), (pointer: coarse) {
+  .not-member .join{min-height:44px}
+}
