@@ -11,7 +11,7 @@ header{display:flex;justify-content:space-between;align-items:center}
 ul{list-style:none;margin:0;padding:0}
 .member{display:flex;align-items:center;gap:8px;padding:4px 0}
 .avatar{width:24px;height:24px;border-radius:50%;background:#ddd center/cover no-repeat;flex:none}
-.name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;contain:inline-size} // see room-view .topic
 .power{font-size:11px;color:#555;background:#eee;border-radius:8px;padding:0 6px}
 .dot{width:8px;height:8px;border-radius:50%;background:#bbb}
 .dot.online{background:#3ba55d}.dot.unavailable{background:#faa61a}

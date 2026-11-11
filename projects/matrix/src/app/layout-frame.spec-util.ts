@@ -16,9 +16,14 @@
  *   - the host's Bootstrap reboot box-sizing and GRID `.row` rules, which reach
  *     any remote element that reuses the class name (the composer's and the
  *     role actions' `.row` did: full-width controls, rows wider than their pane);
+ *   - the shell's ROUTED-VIEW backpane: the routed element is a flex item of a
+ *     column-flex <main> with auto side margins, so it SHRINK-WRAPS its content
+ *     and any unbreakable content widens the whole panel past the viewport;
  *   - no classic scrollbars, which would steal width from the viewport under test. */
 export const HOST_PAGE_CSS = [
   'html,body{overflow-wrap:anywhere}html{scrollbar-width:none}',
+  'main.host-outlet{display:flex;flex-direction:column;width:100%;max-width:100%}',
+  'main.host-outlet>*{display:block;position:relative;margin:8px auto;padding:12px;max-width:90rem;border:1px solid}',
   '*,::before,::after{box-sizing:border-box}',
   '.row{--bs-gutter-x:1.5rem;--bs-gutter-y:0;display:flex;flex-wrap:wrap;margin-top:calc(-1 * var(--bs-gutter-y));'
     + 'margin-right:calc(-.5 * var(--bs-gutter-x));margin-left:calc(-.5 * var(--bs-gutter-x))}',
@@ -62,7 +67,10 @@ export async function frameAt(source: HTMLElement, width: number, height: number
   doc.head.appendChild(page);
   doc.body.style.margin = '0';
   const root = doc.importNode(source, true) as HTMLElement;
-  doc.body.appendChild(root);
+  const outlet = doc.createElement('main');
+  outlet.className = 'host-outlet';
+  outlet.appendChild(root);
+  doc.body.appendChild(outlet);
   await Promise.all(loads);
   await new Promise((r) => requestAnimationFrame(() => r(undefined)));
   const win = iframe.contentWindow!;

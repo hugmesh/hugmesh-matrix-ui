@@ -36,7 +36,11 @@ class MatrixServiceStub {
   sync = jasmine.createSpy('sync').and.returnValue(new Promise<SyncState>(() => undefined));
   mxcToHttp = jasmine.createSpy('mxcToHttp').and.returnValue('');
   // Two words, like a real room name: the phone header used to squeeze it to a few glyphs.
-  roomSummary = jasmine.createSpy('roomSummary').and.resolveTo({ name: 'General chat', topic: 'Anything goes' });
+  roomSummary = jasmine.createSpy('roomSummary').and.resolveTo({
+    name: 'General chat',
+    // Longer than a phone is wide: a one-line topic must truncate, not widen the page.
+    topic: 'Anything goes here: introductions, links, questions about the mesh, and the weekly meetup plan',
+  });
   joinedMembers = jasmine.createSpy('joinedMembers').and.resolveTo([]);
   messages = jasmine.createSpy('messages').and.resolveTo({ events: [], start: '', end: '' });
   getRelations = jasmine.createSpy('getRelations').and.resolveTo([]);
