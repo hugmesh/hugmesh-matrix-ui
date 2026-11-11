@@ -805,7 +805,11 @@ override, the clone or the splice, and mutation-tests that guard. The guard load
 since GitLab silently keeps the last of a repeated key. Keys are compared the
 way GitLab reads them: GitLab symbolises keys, so a plain `:allow_failure` (also
 `:"allow_failure"` / `:'allow_failure'`) is the same key as `allow_failure`, and
-the guard normalises it before checking anything. Running it locally needs
+the guard names every key from the raw YAML node, so an alias key (`*k :` with
+`&k :allow_failure`) counts too. The clone item must be written word for word,
+each word bare or wholly double-quoted: single quotes, `$"..."` or `\$` would stop
+bash expanding `${CI_PROJECT_DIR}`, and words are separated by plain spaces
+only (a no-break space is not a word break for bash). Running it locally needs
 `python3` with PyYAML. The clone needs
 `hugmesh-generator` to allow this project's `CI_JOB_TOKEN`; that, and a real
 `pentest:dast` run, have not been observed from this repo yet.

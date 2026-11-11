@@ -111,8 +111,10 @@ pentest:load:
 # The guard parses this file with a YAML loader (PyYAML) and refuses duplicate
 # keys and merge keys, because GitLab keeps the LAST of a repeated key and a
 # line-based read does not. A plain key spelled `:key` counts as `key`, since
-# GitLab symbolises keys. Hence python:3 + pyyaml, as the generator's lint
-# jobs do. Without PyYAML the guard exits 2 and this job goes red, not green.
+# GitLab symbolises keys, also when written through an alias (`*k :`). The
+# clone's words must be bare or double-quoted, never single-quoted or escaped,
+# or bash would not expand ${CI_PROJECT_DIR}, and split by plain spaces only.
+# Hence python:3 + pyyaml, as the generator's lint jobs do. Without PyYAML the guard exits 2 and this job goes red, not green.
 #
 # Placed in the `pentest` stage with `needs: []` on purpose: it starts at once,
 # and because no later stage exists, a red guard reds the pipeline/MR without
