@@ -67,7 +67,8 @@ pentest:sca:
 # for CI_JOB_TOKEN access, or the clone fails (non-blocking, but no scan).
 #
 # lint:pentest-harness (below) asserts both jobs keep the override, the clone and
-# the splice.
+# the splice, that before_script is exactly these four items, and that variables:
+# holds nothing but PENTEST_HARNESS_DIR.
 pentest:dast:
   extends: .pentest-dast-baseline
   allow_failure: true
@@ -106,9 +107,20 @@ pentest:load:
 # pentest:load are allow_failure by policy, so nothing in the pipeline view tells
 # "scanned and found nothing" from "never had a harness to run". This job fails
 # if either job loses the PENTEST_HARNESS_DIR override, the generator clone, or
-# the trailing `!reference [.pentest-dast-base, before_script]` splice, and then
-# mutation-tests the guard so a green tick means the checks can actually fail.
-# Pure bash, no image, no network.
+# the trailing `!reference [.pentest-dast-base, before_script]` splice, or if
+# anything but the cleanup and the ORG_BASE line sits ahead of the clone, or any
+# job variable but PENTEST_HARNESS_DIR is set (CI_REPOSITORY_URL feeds ORG_BASE), and
+# then mutation-tests the guard so a green tick means the checks can actually fail.
+# The guard parses this file with a YAML loader (PyYAML) and refuses duplicate
+# keys and merge keys, because GitLab keeps the LAST of a repeated key and a
+# line-based read does not. It also refuses keys GitLab may name differently:
+# any key starting with ':' (GitLab symbolises `:key` into `key`, depending on
+# its tag) and any non-string key such as `!!null key` (GitLab reads "key"), and
+# a byte-order mark anywhere but the first byte (GitLab skips one at the start of
+# any line, PyYAML only at the start of the file). The
+# clone's words must be bare or double-quoted, never single-quoted or escaped,
+# or bash would not expand ${CI_PROJECT_DIR}, and split by plain spaces only.
+# Hence python:3 + pyyaml, as the generator's lint jobs do. Without PyYAML the guard exits 2 and this job goes red, not green.
 #
 # Placed in the `pentest` stage with `needs: []` on purpose: it starts at once,
 # and because no later stage exists, a red guard reds the pipeline/MR without
@@ -117,9 +129,12 @@ lint:pentest-harness:
   stage: pentest
   needs: []
   tags: [hugmesh-x86]
+  image: python:3
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+  before_script:
+    - pip install --quiet pyyaml
   script:
     - bash scripts/check-pentest-harness.test.sh
 
