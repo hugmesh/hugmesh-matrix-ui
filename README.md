@@ -802,11 +802,13 @@ FATAL and pinned-nuclei install still run after it. `lint:pentest-harness` runs
 `scripts/check-pentest-harness.test.sh`, which fails if either job loses the
 override, the clone or the splice, and mutation-tests that guard. The guard loads
 `.gitlab-ci.yml` with PyYAML and refuses any duplicate key or `<<` merge key,
-since GitLab silently keeps the last of a repeated key. Keys are compared the
-way GitLab reads them: GitLab symbolises keys, so a plain `:allow_failure` (also
-`:"allow_failure"` / `:'allow_failure'`) is the same key as `allow_failure`, and
-the guard names every key from the raw YAML node, so an alias key (`*k :` with
-`&k :allow_failure`) counts too. The clone item must be written word for word,
+since GitLab silently keeps the last of a repeated key. It also refuses every
+key GitLab could name differently from PyYAML: a key starting with `:` (GitLab
+symbolises keys, so `:allow_failure` or `! ":allow_failure"` is `allow_failure`,
+but `!!str :allow_failure` is not) and a key that is not a plain string
+(`!!null allow_failure` or a `!!binary` key is the string name for GitLab).
+Keys are named from the raw YAML node, so an alias key (`*k :`) is checked too.
+The clone item must be written word for word,
 each word bare or wholly double-quoted: single quotes, `$"..."` or `\$` would stop
 bash expanding `${CI_PROJECT_DIR}`, and words are separated by plain spaces
 only (a no-break space is not a word break for bash). Running it locally needs
