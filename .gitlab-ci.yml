@@ -67,7 +67,8 @@ pentest:sca:
 # for CI_JOB_TOKEN access, or the clone fails (non-blocking, but no scan).
 #
 # lint:pentest-harness (below) asserts both jobs keep the override, the clone and
-# the splice, and that before_script is exactly these four items.
+# the splice, that before_script is exactly these four items, and that variables:
+# holds nothing but PENTEST_HARNESS_DIR.
 pentest:dast:
   extends: .pentest-dast-baseline
   allow_failure: true
@@ -107,7 +108,8 @@ pentest:load:
 # "scanned and found nothing" from "never had a harness to run". This job fails
 # if either job loses the PENTEST_HARNESS_DIR override, the generator clone, or
 # the trailing `!reference [.pentest-dast-base, before_script]` splice, or if
-# anything but the cleanup and the ORG_BASE line sits ahead of the clone, and
+# anything but the cleanup and the ORG_BASE line sits ahead of the clone, or any
+# job variable but PENTEST_HARNESS_DIR is set (CI_REPOSITORY_URL feeds ORG_BASE), and
 # then mutation-tests the guard so a green tick means the checks can actually fail.
 # The guard parses this file with a YAML loader (PyYAML) and refuses duplicate
 # keys and merge keys, because GitLab keeps the LAST of a repeated key and a
