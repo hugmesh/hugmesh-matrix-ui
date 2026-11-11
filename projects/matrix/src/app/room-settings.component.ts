@@ -2,7 +2,7 @@ import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { MatrixService, RoomSummary } from './matrix.service';
+import { MATRIX_ACCESS_DENIED_COPY, MatrixForbiddenError, MatrixService, RoomSummary } from './matrix.service';
 import { SessionService } from './session.service';
 import {
   DEFAULT_MESH_DEVICE,
@@ -53,6 +53,19 @@ export class RoomSettingsComponent implements OnInit, OnDestroy {
 
   readonly roomId = signal<string | null>(null);
   readonly busy = signal(false);
+  /**
+   * Whether the caller may edit this room at all: `not-member` when the
+   * homeserver refused its state (M_FORBIDDEN — the caller is not in the room),
+   * `denied` when the platform refused Matrix to the account (the role gate's
+   * empty 403). A refused load used to leave the name and topic fields EDITABLE
+   * over blank values, with Save, Invite and Leave all live.
+   */
+  readonly access = signal<'ok' | 'not-member' | 'denied'>('ok');
+  /** Every control is read-only unless the room's state was readable. */
+  readonly readOnly = computed(() => this.access() !== 'ok');
+  readonly accessDeniedCopy = MATRIX_ACCESS_DENIED_COPY;
+  /** WHY-help for every control a non-member sees disabled (never bare). */
+  readonly readOnlyHelp = 'You are not a member of this room, so its settings are read-only.';
   readonly status = signal('');
   /** The loaded fields below are SIGNALS on purpose: MatrixService reads through
    *  a raw `fetch`, and a plain field assigned after that await left the page
@@ -126,7 +139,15 @@ export class RoomSettingsComponent implements OnInit, OnDestroy {
   }
 
   private async load(rid: string): Promise<void> {
-    const summary = await this.matrix.roomSummary(rid);
+    let summary: RoomSummary;
+    try {
+      summary = await this.matrix.roomSummary(rid);
+    } catch (e) {
+      if (!(e instanceof MatrixForbiddenError)) throw e;
+      await this.refuse(rid, e);
+      return;
+    }
+    this.access.set('ok');
     this.summary.set(summary);
     this.name.set(summary.name ?? '');
     this.topic.set(summary.topic ?? '');
@@ -143,6 +164,30 @@ export class RoomSettingsComponent implements OnInit, OnDestroy {
     this.chat3dMaxParticipants.set(c3d?.maxParticipants ?? CHAT3D_DEFAULT_PARTICIPANTS);
     this.chat3dAllowMedia.set(c3d?.allowMedia ?? true);
     this.chat3dStageModOnly.set(c3d?.stageModOnly ?? true);
+  }
+
+  /** The room's state was refused (403): go READ-ONLY. A non-member still sees
+   *  the name and topic the room summary offers (public rooms), never blanks
+   *  posing as editable values; the mesh-bridge / chat3d reads are skipped —
+   *  they would only be refused the same way. */
+  private async refuse(rid: string, err: MatrixForbiddenError): Promise<void> {
+    this.summary.set(null);
+    if (err.accountLevel) {
+      this.access.set('denied');
+      return;
+    }
+    this.access.set('not-member');
+    const preview = await this.matrix.roomPreview(rid).catch(() => null);
+    if (this.roomId() !== rid) return;
+    this.name.set(preview?.name ?? '');
+    this.topic.set(preview?.topic ?? '');
+  }
+
+  /** An aria-describedby value from the ids that apply (null when none do), so a
+   *  control disabled as read-only also announces WHY. */
+  describedBy(...ids: (string | false | null | undefined)[]): string | null {
+    const list = ids.filter((id): id is string => !!id);
+    return list.length ? list.join(' ') : null;
   }
 
   /** The server portion of a Matrix user id (`@bob:other.org` → `other.org`). */
@@ -192,12 +237,14 @@ export class RoomSettingsComponent implements OnInit, OnDestroy {
    *  decides whether the controls are OFFERED (greyed-out with WHY-helptext
    *  otherwise, never a bare disabled control). */
   canEditMeshBridge(): boolean {
+    if (this.readOnly()) return false;
     return senderMayDriveScene(this.summary()?.powerLevels ?? null, this.myUserId() || null, MESH_BRIDGE_STATE_TYPE);
   }
 
   /** WHY-helptext for the mesh-bridge controls when the caller's power level is
    *  below the room's threshold — the (disabled) controls are never bare. */
   get meshHelp(): string {
+    if (this.readOnly()) return this.readOnlyHelp;
     return this.canEditMeshBridge()
       ? ''
       : 'Your power level in this room is below what changing the mesh bridge requires (moderator). Ask a room moderator to change it.';
@@ -261,12 +308,14 @@ export class RoomSettingsComponent implements OnInit, OnDestroy {
    *  decides whether the controls are OFFERED (greyed with WHY-helptext
    *  otherwise, never a bare disabled control). */
   canEditChat3d(): boolean {
+    if (this.readOnly()) return false;
     return senderMayDriveScene(this.summary()?.powerLevels ?? null, this.myUserId() || null, CHAT3D_STATE_TYPE);
   }
 
   /** WHY-helptext for the chat3d controls when the caller's power level is
    *  below the room's threshold — the (disabled) controls are never bare. */
   get chat3dHelp(): string {
+    if (this.readOnly()) return this.readOnlyHelp;
     return this.canEditChat3d()
       ? ''
       : 'Your power level in this room is below what changing the 3D chat room requires (moderator). Ask a room moderator to change it.';
@@ -355,6 +404,10 @@ export class RoomSettingsComponent implements OnInit, OnDestroy {
   async onAvatar(ev: Event): Promise<void> {
     const file = (ev.target as HTMLInputElement).files?.[0];
     if (!file) return;
+    if (this.readOnly()) {
+      this.status.set(this.readOnlyHelp);
+      return;
+    }
     this.status.set('Uploading avatar…');
     try {
       const up = await this.matrix.uploadMedia(file, file.name);
@@ -368,6 +421,10 @@ export class RoomSettingsComponent implements OnInit, OnDestroy {
   async save(): Promise<void> {
     const rid = this.roomId();
     if (!rid) return;
+    if (this.readOnly()) {
+      this.status.set(this.readOnlyHelp);
+      return;
+    }
     this.busy.set(true);
     try {
       await this.matrix.setStateEvent(rid, 'm.room.name', { name: this.name() });
@@ -385,6 +442,10 @@ export class RoomSettingsComponent implements OnInit, OnDestroy {
     const rid = this.roomId();
     const u = this.inviteUser.trim();
     if (!rid || !u) return;
+    if (this.readOnly()) {
+      this.status.set(this.readOnlyHelp);
+      return;
+    }
     // SOCIAL LOCAL-ONLY: a domain-locked caller cannot invite a cross-domain
     // (federation) user. Refuse the federation target here too (defence-in-depth
     // with the disabled control) and surface the WHY, keeping local invites live.
@@ -406,6 +467,10 @@ export class RoomSettingsComponent implements OnInit, OnDestroy {
   async leave(): Promise<void> {
     const rid = this.roomId();
     if (!rid) return;
+    if (this.readOnly()) {
+      this.status.set(this.readOnlyHelp);
+      return;
+    }
     try {
       await this.matrix.leaveRoom(rid);
     } catch (e: unknown) {

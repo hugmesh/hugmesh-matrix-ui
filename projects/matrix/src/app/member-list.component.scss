@@ -11,3 +11,9 @@ ul{list-style:none;margin:0;padding:0}
 .dot{width:8px;height:8px;border-radius:50%;background:#bbb}
 .dot.online{background:#3ba55d}.dot.unavailable{background:#faa61a}
 .kick{font-size:11px}
+
+// Refused-roster notices: colours INHERIT the host theme (contrast follows the
+// page); border + bold first line mark the notice without relying on colour.
+.access-note{margin:8px 0;padding:10px 12px;border:1px solid currentColor;border-left-width:4px;border-radius:8px}
+.access-note p{margin:0;font-size:13px}
+.access-note .access-title{font-weight:700;margin-bottom:4px}

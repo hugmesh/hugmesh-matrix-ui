@@ -1,7 +1,9 @@
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { MatrixService, MatrixRoom, SyncRoomFeed, mergeSyncRoom } from './matrix.service';
+import {
+  MATRIX_ACCESS_DENIED_COPY, MatrixService, MatrixRoom, SyncRoomFeed, mergeSyncRoom,
+} from './matrix.service';
 import { RoomListComponent } from './room-list.component';
 import { RoomViewComponent } from './room-view.component';
 import { ChatThemeRootDirective } from './theme/chat-theme-root.directive';
@@ -50,6 +52,17 @@ export class MatrixChatComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
 
   readonly userId = signal<string | null>(null);
+  /**
+   * Whether this account may use Matrix at all. `checking` until whoami answers
+   * (the shell — room list included, which fires its own CS-API calls — mounts
+   * only on `ok`); `denied` on a 403 from whoami OR from sync: the role gate
+   * refusing an account without the matrix role, or the homeserver refusing
+   * the account. That used to render as an empty client ("Select a room to
+   * start chatting") with no explanation while the sync loop retried the 403
+   * every 2s for the life of the tab.
+   */
+  readonly access = signal<'checking' | 'ok' | 'denied'>('checking');
+  readonly accessDeniedCopy = MATRIX_ACCESS_DENIED_COPY;
   readonly rooms = signal<MatrixRoom[]>([]);
   readonly current = signal<MatrixRoom | null>(null);
 
@@ -68,7 +81,16 @@ export class MatrixChatComponent implements OnInit, OnDestroy {
   private querySub?: { unsubscribe(): void };
 
   async ngOnInit(): Promise<void> {
-    this.userId.set(await this.matrix.whoami());
+    // FAIL-SOFT on a thrown whoami (network, non-JSON proxy answer): that is
+    // not a refusal, so the client still loads. Only a 403 denies access.
+    const who = await this.matrix.whoamiAccess().catch(() => ({ userId: null, forbidden: null }));
+    if (who.forbidden) {
+      // TERMINAL: no room list, no sync loop — nothing here can succeed.
+      this.denyAccess();
+      return;
+    }
+    this.userId.set(who.userId);
+    this.access.set('ok');
     const rooms = await this.matrix.joinedRoomsDetailed();
     this.rooms.set(rooms);
 
@@ -162,6 +184,15 @@ export class MatrixChatComponent implements OnInit, OnDestroy {
     }
   }
 
+  /** The account is refused Matrix: stop the sync loop for good and swap the
+   *  shell for the explanation. */
+  private denyAccess(): void {
+    this.running = false;
+    this.access.set('denied');
+    this.current.set(null);
+    this.rooms.set([]);
+  }
+
   /** Replaces the original 1.5s setInterval poll with a long-poll sync loop
    *  feeding per-room signals. */
   private async syncLoop(): Promise<void> {
@@ -173,6 +204,13 @@ export class MatrixChatComponent implements OnInit, OnDestroy {
         // throw — so without this back-off the loop re-requested with zero delay
         // and pinned a core while hammering the BFF for the life of the tab.
         if (state.failed) {
+          // A 403 is PERMANENT (no matrix role, or the homeserver refusing the
+          // account): backing off and retrying it changes nothing, so it ENDS
+          // the loop. 401 / 5xx / network failures keep the back-off.
+          if (state.forbidden) {
+            this.denyAccess();
+            return;
+          }
           await new Promise((res) => setTimeout(res, MatrixChatComponent.SYNC_BACKOFF_MS));
           continue;
         }

@@ -8,19 +8,31 @@
   <div class="topbar">
     <h2>Matrix</h2>
     <p data-testid="matrix-whoami" *ngIf="userId() as id">Signed in as {{ id }}</p>
-    <nav class="nav" aria-label="Matrix sections" aria-describedby="matrix-nav-help">
-      <a [routerLink]="['search']" [relativeTo]="mount">Search</a>
-      <a [routerLink]="['settings']" [relativeTo]="mount">Settings</a>
-      <a [routerLink]="['moderation']" [relativeTo]="mount">Moderation</a>
-      <a [routerLink]="['call']" [relativeTo]="mount" [queryParams]="{ room: current()?.roomId }">Call</a>
-    </nav>
-    <p id="matrix-nav-help" class="section-help" data-testid="matrix-nav-help">
-      Jump between sections: Search messages, your Settings, Moderation and safety tools, and a video
-      Call in the selected room.
-    </p>
+    <!-- The section links all lead to Matrix views that cannot work for an
+         account refused Matrix, so they are withdrawn once access is refused. -->
+    <ng-container *ngIf="access() !== 'denied'">
+      <nav class="nav" aria-label="Matrix sections" aria-describedby="matrix-nav-help">
+        <a [routerLink]="['search']" [relativeTo]="mount">Search</a>
+        <a [routerLink]="['settings']" [relativeTo]="mount">Settings</a>
+        <a [routerLink]="['moderation']" [relativeTo]="mount">Moderation</a>
+        <a [routerLink]="['call']" [relativeTo]="mount" [queryParams]="{ room: current()?.roomId }">Call</a>
+      </nav>
+      <p id="matrix-nav-help" class="section-help" data-testid="matrix-nav-help">
+        Jump between sections: Search messages, your Settings, Moderation and safety tools, and a video
+        Call in the selected room.
+      </p>
+    </ng-container>
   </div>
 
-  <div class="shell" data-testid="matrix-shell">
+  <!-- NO MATRIX ACCESS: a 403 from whoami or sync (no matrix role, or the
+       homeserver refusing the account). Said in words, in place of an empty
+       client that looked like "you have no rooms yet". -->
+  <div *ngIf="access() === 'denied'" class="access-denied" data-testid="matrix-access-denied" role="alert">
+    <p class="access-title">Matrix is not available to you</p>
+    <p>{{ accessDeniedCopy }}</p>
+  </div>
+
+  <div *ngIf="access() === 'ok'" class="shell" data-testid="matrix-shell">
     <hug-room-list
       [rooms]="rooms" [selectedRoomId]="current()?.roomId ?? null"
       (roomSelected)="select($event)"

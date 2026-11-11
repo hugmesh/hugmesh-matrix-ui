@@ -14,3 +14,10 @@
 // the content, the panes are context.
 .members-pane{width:clamp(200px, 18vw, 320px);flex:none;border-left:1px solid #eee;overflow:auto;min-height:0}
 .empty{flex:1;display:flex;align-items:center;justify-content:center;color:#999}
+
+// NO MATRIX ACCESS notice. Colours INHERIT the host theme (the host paints this
+// remote dark or light), so the copy keeps the page's own contrast; the accent
+// border marks it as a notice without relying on colour alone (the heading says it).
+.access-denied{margin:16px 8px;padding:12px 16px;border:1px solid currentColor;border-left-width:4px;border-radius:8px;max-width:40rem}
+.access-denied p{margin:0}
+.access-denied .access-title{font-weight:700;margin-bottom:4px}
