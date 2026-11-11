@@ -35,9 +35,9 @@ class MatrixServiceStub {
   joinedRoomsDetailed = jasmine.createSpy('joinedRoomsDetailed').and.resolveTo(ROOMS);
   sync = jasmine.createSpy('sync').and.returnValue(new Promise<SyncState>(() => undefined));
   mxcToHttp = jasmine.createSpy('mxcToHttp').and.returnValue('');
-  // Two words, like a real room name: the phone header used to squeeze it to a few glyphs.
+  // A real-length room name: the phone header used to squeeze it to a few glyphs.
   roomSummary = jasmine.createSpy('roomSummary').and.resolveTo({
-    name: 'General chat',
+    name: 'General chat for everyone',
     // Longer than a phone is wide: a one-line topic must truncate, not widen the page.
     topic: 'Anything goes here: introductions, links, questions about the mesh, and the weekly meetup plan',
   });
@@ -93,7 +93,10 @@ describe('MatrixChatComponent — GUI-19 narrow-viewport layout and secondary te
     }
   }
 
-  for (const width of [320, 390]) {
+  // 480px: a phone in landscape. The header is wide enough to fit the avatar, the
+  // count and every action on ONE line with only a sliver left for the room name,
+  // which is exactly where a zero-basis title used to break mid-word.
+  for (const width of [320, 390, 480]) {
     it(`at ${width}px: whole-word topbar, room list STACKED above a full-width room pane, no sideways scroll`, async () => {
       const f = await frameAt(host, width, 844);
       try {
@@ -105,6 +108,12 @@ describe('MatrixChatComponent — GUI-19 narrow-viewport layout and secondary te
         const pane = f.box('hug-room-view');
         expect(list.bottom).withContext('room list sits ABOVE the room pane').toBeLessThanOrEqual(pane.top + 1);
         expect(list.width).withContext('room list spans the shell').toBeGreaterThanOrEqual(shell.width - 2);
+        // The visible list, not just its host element, drops its column width. It is
+        // measured against the host's client width: the capped host scrolls, and a
+        // classic scrollbar (headless Chrome) takes its own strip.
+        const listHost = f.root.querySelector('hug-room-list') as HTMLElement;
+        expect(f.box('[data-testid="room-list"]').width).withContext('the list itself fills its host, not a 160px column')
+          .toBeGreaterThanOrEqual(listHost.clientWidth - 2);
         expect(pane.width).withContext('room pane spans the shell').toBeGreaterThanOrEqual(shell.width - 2);
         expect(list.height).withContext('stacked room list is capped (40vh) so the pane starts on screen')
           .toBeLessThanOrEqual(0.4 * 844 + 1);
@@ -122,7 +131,7 @@ describe('MatrixChatComponent — GUI-19 narrow-viewport layout and secondary te
         // The room pane's own header wraps its actions under the title rather than
         // squeezing the room name until it breaks mid-word.
         const roomName = f.root.querySelector('[data-testid="room-name"]');
-        expect(roomName?.textContent?.trim()).withContext('room header rendered').toBe('General chat');
+        expect(roomName?.textContent?.trim()).withContext('room header rendered').toBe('General chat for everyone');
         expect(f.lineBoxes(roomName!)).withContext(`room name at ${width}px must be ONE line`).toBe(1);
       } finally {
         f.remove();

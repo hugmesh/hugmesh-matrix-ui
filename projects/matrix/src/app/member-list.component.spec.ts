@@ -166,25 +166,28 @@ describe('MemberListComponent', () => {
   });
 
   // ───────── GUI-19: the desktop members pane is narrower than 300px ─────────
-  it('fits the 230px members pane (its width at a 1280px viewport) with no sideways overflow', () => {
-    const el = fixture.nativeElement as HTMLElement;
-    const pane = document.createElement('div');
-    pane.style.cssText = 'width:230px;overflow:auto';
-    el.parentElement!.insertBefore(pane, el);
-    pane.appendChild(el);
-    try {
-      expect(el.querySelectorAll('.member').length).withContext('members rendered').toBeGreaterThan(0);
-      expect(pane.scrollWidth - pane.clientWidth).withContext('no horizontal overflow in the pane').toBeLessThanOrEqual(0);
-      const right = pane.getBoundingClientRect().right;
-      for (const sel of ['[data-testid="input-invite-user"]', '.kick']) {
-        const target = el.querySelector(sel);
-        expect(target).withContext(`${sel} rendered`).toBeTruthy();
-        expect(target!.getBoundingClientRect().right).withContext(`${sel} stays inside the pane`).toBeLessThanOrEqual(right + 0.5);
+  // The pane is clamp(200px, 18vw, 320px): 230px at a 1280px viewport, 200px at its floor.
+  for (const width of [230, 200]) {
+    it(`fits a ${width}px members pane with no sideways overflow`, () => {
+      const el = fixture.nativeElement as HTMLElement;
+      const pane = document.createElement('div');
+      pane.style.cssText = `width:${width}px;overflow:auto`;
+      el.parentElement!.insertBefore(pane, el);
+      pane.appendChild(el);
+      try {
+        expect(el.querySelectorAll('.member').length).withContext('members rendered').toBeGreaterThan(0);
+        expect(pane.scrollWidth - pane.clientWidth).withContext('no horizontal overflow in the pane').toBeLessThanOrEqual(0);
+        const right = pane.getBoundingClientRect().right;
+        for (const sel of ['[data-testid="input-invite-user"]', '.kick']) {
+          const target = el.querySelector(sel);
+          expect(target).withContext(`${sel} rendered`).toBeTruthy();
+          expect(target!.getBoundingClientRect().right).withContext(`${sel} stays inside the pane`).toBeLessThanOrEqual(right + 0.5);
+        }
+      } finally {
+        pane.replaceWith(el);
       }
-    } finally {
-      pane.replaceWith(el);
-    }
-  });
+    });
+  }
 
   // ───────── GUI-19: secondary text on the DARK panel ─────────
   it('the invite/kick status line reads at >= 4.5:1 on the dark panel (was #888, 3.75:1)', () => {
