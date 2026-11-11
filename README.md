@@ -800,7 +800,10 @@ clone is prepended to the base job's `before_script` with
 `!reference [.pentest-dast-base, before_script]`, so the base's missing-harness
 FATAL and pinned-nuclei install still run after it. `lint:pentest-harness` runs
 `scripts/check-pentest-harness.test.sh`, which fails if either job loses the
-override, the clone or the splice, and mutation-tests that guard. The guard loads
+override, the clone or the splice, or if the two `before_script` items ahead of
+the clone are anything but the cleanup and the `ORG_BASE=...` line the clone
+reads (no ORG_BASE item clones from `/hugmesh-generator.git`; an extra item can
+redefine `git`), and mutation-tests that guard. The guard loads
 `.gitlab-ci.yml` with PyYAML and refuses any duplicate key or `<<` merge key,
 since GitLab silently keeps the last of a repeated key. It also refuses every
 key GitLab could name differently from PyYAML: a key starting with `:` (GitLab
