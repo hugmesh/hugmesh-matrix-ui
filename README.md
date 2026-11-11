@@ -811,6 +811,10 @@ symbolises keys, so `:allow_failure` or `! ":allow_failure"` is `allow_failure`,
 but `!!str :allow_failure` is not) and a key that is not a plain string
 (`!!null allow_failure` or a `!!binary` key is the string name for GitLab).
 Keys are named from the raw YAML node, so an alias key (`*k :`) is checked too.
+A byte-order mark (U+FEFF) anywhere but the first byte of the file is refused:
+GitLab's YAML reader skips one at the start of any line, so
+`<BOM> allow_failure: false` under a job is that job's key for GitLab, while
+PyYAML reads a separate top-level key.
 The clone item must be written word for word,
 each word bare or wholly double-quoted: single quotes, `$"..."` or `\$` would stop
 bash expanding `${CI_PROJECT_DIR}`, and words are separated by plain spaces
