@@ -1,10 +1,14 @@
+@use '../styles/tokens' as t;
+
 .search-view{padding:8px;max-width:560px}
 .bar{display:flex;gap:6px}
 .bar input{flex:1;padding:6px}
-.scope{font-size:12px;color:#888}
-.count{font-size:12px;color:#666}
+.scope{font-size:12px;color:t.$text-muted}
+.count{font-size:12px;color:t.$text-muted}
 .results{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
-.result a{display:flex;flex-direction:column;text-decoration:none;color:inherit;background:#f7f7f7;border-radius:6px;padding:6px}
+// A result card on the DARK panel: its text inherits light, so the fill is a
+// translucent light tint (a #f7f7f7 card put that text at ~1.1:1).
+.result a{display:flex;flex-direction:column;text-decoration:none;color:inherit;background:rgba(255,255,255,.06);border-radius:6px;padding:6px}
 .sender{font-weight:600;font-size:13px}
-.room{font-size:11px;color:#888}
+.room{font-size:11px;color:t.$text-muted}
 .snippet{font-size:13px}

@@ -9,6 +9,7 @@ import { CHAT3D_STATE_TYPE } from './chat3d/chat3d-state.service';
 import { CHAT3D_SCENE_TYPE } from './chat3d/chat3d-scene.service';
 import { CHAT3D_AVATAR_TYPE } from './chat3d/chat3d-avatar.service';
 import { expectDescribedByHelp } from './a11y-help.spec-util';
+import { expectReadableOnDarkPanels } from './dark-panel-contrast.spec-util';
 
 /** A HugSession on homeserver `test`, carrying the given roles. */
 function sessionWith(roles: string[]): HugSession {
@@ -174,6 +175,10 @@ describe('RoomSettingsComponent', () => {
       expect(component.domainLocked()).toBeTrue();
       expect(matrix.whoami).toHaveBeenCalled();
       expect(component.localServer()).toBe('test');
+    });
+
+    it('GUI-19: the LOCAL-ONLY note reads at >= 4.5:1 on the dark panel (was #0a7d52, ~2.6:1)', () => {
+      expectReadableOnDarkPanels(fixture.nativeElement, '[data-testid="invite-domain-lock-note"]');
     });
 
     it('renders a LOCAL-ONLY note announced as a status', () => {
@@ -515,5 +520,14 @@ describe('RoomSettingsComponent', () => {
         expect(expectDescribedByHelp(el, '[data-testid="btn-save-chat3d"]').toLowerCase()).toContain('power levels');
       });
     });
+  });
+
+  // ───────── GUI-19: secondary text on the DARK panel ─────────
+  it('every field help and the status line read at >= 4.5:1 on the dark panel (were #888, 3.75:1)', () => {
+    component.status.set('Saved');
+    fixture.detectChanges();
+    const n = expectReadableOnDarkPanels(fixture.nativeElement, '.field-help');
+    expect(n).toBeGreaterThan(3);
+    expectReadableOnDarkPanels(fixture.nativeElement, '.status');
   });
 });

@@ -3,6 +3,7 @@ import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/route
 import { SearchComponent } from './search.component';
 import { MatrixService, SearchResult, TimelineEvent } from './matrix.service';
 import { expectDescribedByHelp } from './a11y-help.spec-util';
+import { expectReadableOnDarkPanels } from './dark-panel-contrast.spec-util';
 
 const HIT: TimelineEvent = {
   eventId: '$e1',
@@ -121,5 +122,21 @@ describe('SearchComponent', () => {
     fixture.detectChanges();
     expect(expectDescribedByHelp(fixture.nativeElement, '[data-testid="btn-search-more"]'))
       .toContain('older');
+  });
+
+  // ───────── GUI-19: secondary text on the DARK panel ─────────
+  // "0 results" was #666 (2.21:1 live), the scope line #888, and a result card
+  // was a #f7f7f7 fill under inherited LIGHT text (~1.1:1).
+  it('the count, the scope line and every part of a result card read at >= 4.5:1 on the dark panel', async () => {
+    const fixture = await setup('!scope:test');
+    const el = fixture.nativeElement as HTMLElement;
+    expectReadableOnDarkPanels(el, '[data-testid="search-result-count"]');
+    expectReadableOnDarkPanels(el, '[data-testid="search-scope"]');
+    fixture.componentInstance.term = 'find';
+    await fixture.componentInstance.runSearch(true);
+    fixture.detectChanges();
+    expectReadableOnDarkPanels(el, '.result .sender');
+    expectReadableOnDarkPanels(el, '.result .room');
+    expectReadableOnDarkPanels(el, '.result .snippet');
   });
 });

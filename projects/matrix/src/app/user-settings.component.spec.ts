@@ -7,6 +7,7 @@ import { MatrixService } from './matrix.service';
 import { MeshDevice, UserBffService } from './user-bff.service';
 import { CHAT_THEME_ACCOUNT_DATA_TYPE, CHAT_THEME_STORAGE_KEY, ChatThemeService } from './theme/chat-theme.service';
 import { expectDescribedByHelp } from './a11y-help.spec-util';
+import { expectReadableOnDarkPanels } from './dark-panel-contrast.spec-util';
 
 class MatrixServiceStub {
   whoami = jasmine.createSpy('whoami').and.resolveTo('@me:test');
@@ -423,10 +424,26 @@ describe('UserSettingsComponent', () => {
       expect(line.textContent).toContain('direct');
     });
 
+    it('GUI-19: node id, a revoked label and its "Revoked" flag read at >= 4.5:1 on the dark panel', () => {
+      userBff.meshSubject.next([device({ state: 'revoked' })]);
+      fixture.detectChanges();
+      const el = fixture.nativeElement as HTMLElement;
+      expectReadableOnDarkPanels(el, '.mesh-node');
+      expectReadableOnDarkPanels(el, '.mesh-row.revoked .mesh-label');
+      expectReadableOnDarkPanels(el, '.mesh-revoked');
+    });
+
     it('renders NO status line when every telemetry field is absent (fail-soft, no dangling separators)', () => {
       userBff.meshSubject.next([device()]);
       fixture.detectChanges();
       expect(fixture.nativeElement.querySelector('[data-testid="mesh-status-d1"]')).toBeNull();
     });
+  });
+
+  // ───────── GUI-19: secondary text on the DARK panel ─────────
+  // "Signed in as" was #555: 1.78:1 on the live shell panel.
+  it('the "Signed in as" line reads at >= 4.5:1 on the dark panel', () => {
+    expectReadableOnDarkPanels(fixture.nativeElement, '.uid');
+    expectReadableOnDarkPanels(fixture.nativeElement, '.uid strong');
   });
 });

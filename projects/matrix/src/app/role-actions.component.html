@@ -29,7 +29,7 @@
         recommending an instance block asks the moderators to consider acting for everyone.
       </p>
 
-      <div class="row" *ngIf="!isSelf">
+      <div class="action-row" *ngIf="!isSelf">
         <label class="sr" for="ra-block-platform">Block scope</label>
         <select id="ra-block-platform" data-testid="ra-block-platform" [(ngModel)]="blockPlatform"
                 aria-describedby="ra-block-help">
@@ -46,7 +46,7 @@
         to this platform. This affects only your own view.
       </p>
 
-      <div class="row recommend">
+      <div class="action-row recommend">
         <label class="sr" for="ra-recommend-reason">Reason for recommending an instance block</label>
         <input id="ra-recommend-reason" data-testid="ra-recommend-reason" [(ngModel)]="recommendReason"
                placeholder="Reason (optional)" aria-describedby="ra-recommend-help" />
@@ -83,7 +83,7 @@
         and to triage requests raised by members.
       </p>
 
-      <div class="row">
+      <div class="action-row">
         <label class="sr" for="ra-mod-scope">Server-wide block scope</label>
         <select id="ra-mod-scope" data-testid="ra-mod-scope" [(ngModel)]="modScope"
                 aria-describedby="ra-mod-block-help">

@@ -11,7 +11,12 @@
   font-family: var(--hugm-chat-font-family, inherit);
 }
 
-.row {
+// NOT `.row`: federated into the host shell, a bare `.row` also matched the
+// host's Bootstrap grid (`.row` = -12px gutters, `.row > *` = width:100% +
+// gutter padding + flex-shrink:0), so every composer control went full width
+// and the row stuck out 24px past the room pane, the 52px sideways scroll the
+// GUI-19 retest measured at 390px. Remote class names must not shadow the host's.
+.composer-row {
   display: flex;
   gap: 6px;
   align-items: center;
@@ -21,8 +26,8 @@
   flex-wrap: wrap;
 }
 
-.row input[type='text'],
-.row input:not([type]) {
+.composer-row input[type='text'],
+.composer-row input:not([type]) {
   // flex-basis 10rem + min-width 0: the input keeps a usable width when there
   // is room but CAN shrink below its intrinsic ~20-char default size on
   // phones instead of shoving the buttons off-screen.

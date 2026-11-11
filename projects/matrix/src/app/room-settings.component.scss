@@ -1,11 +1,14 @@
+@use '../styles/tokens' as t;
+
 .room-settings{display:flex;flex-direction:column;gap:8px;padding:8px;max-width:420px}
 header{display:flex;justify-content:space-between;align-items:center}
 label{display:flex;flex-direction:column;font-size:13px;gap:2px}
 .leave{color:#c00}
-.status{font-size:12px;color:#888}
+.status{font-size:12px;color:t.$text-muted}
 .powers{list-style:none;margin:0;padding:0;font-size:12px}
-.domain-lock-note{margin:0;font-size:12px;color:#0a7d52;display:flex;align-items:center;gap:4px}
-.field-help{margin:2px 0 0;font-size:11px;color:#888}
+// --hug-success, not #0a7d52 (~2.6:1 on the dark panel).
+.domain-lock-note{margin:0;font-size:12px;color:var(--hug-success, #4caf50);display:flex;align-items:center;gap:4px}
+.field-help{margin:2px 0 0;font-size:11px;color:t.$text-muted}
 button[disabled]{cursor:not-allowed;opacity:.6}
 .mesh-bridge{display:flex;flex-direction:column;gap:8px}
 .mesh-bridge h4{margin:0}

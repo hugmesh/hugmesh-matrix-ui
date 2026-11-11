@@ -5,6 +5,7 @@ import { RoomListComponent } from './room-list.component';
 import { MatrixService, MatrixRoom } from './matrix.service';
 import { SessionService, HugSession } from './session.service';
 import { expectDescribedByHelp } from './a11y-help.spec-util';
+import { expectReadableOnDarkPanels } from './dark-panel-contrast.spec-util';
 
 /** Build a HugSession fixture carrying the given roles (drives the
  *  matrix_domainlocked marker the room list reads). */
@@ -92,6 +93,12 @@ describe('RoomListComponent', () => {
       expect(row.textContent).toContain('invited by @alice:test');
       expect(row.querySelector('[data-testid="btn-accept-invite-!inv:test"]')).toBeTruthy();
       expect(row.querySelector('[data-testid="btn-decline-invite-!inv:test"]')).toBeTruthy();
+    });
+
+    it('GUI-19: the room name and "invited by" line read at >= 4.5:1 on the dark panel (inviter was #888)', async () => {
+      await renderWithInvite();
+      expectReadableOnDarkPanels(fixture.nativeElement, '.invite .name');
+      expectReadableOnDarkPanels(fixture.nativeElement, '.invite .inviter');
     });
 
     it('Accept joins the invited room and drops the row', async () => {
@@ -479,5 +486,12 @@ describe('RoomListComponent', () => {
       expect(err.textContent).toContain('Could not join');
       expect(err.textContent).toContain('domain-locked');
     });
+  });
+
+  // ───────── GUI-19: the create-room dialog's fill under inherited LIGHT text ─────────
+  it('the create-room dialog help reads at >= 4.5:1 on its fill over the dark panel (fill was #f7f7f7)', () => {
+    component.showCreate.set(true);
+    fixture.detectChanges();
+    expectReadableOnDarkPanels(fixture.nativeElement, '[data-testid="dialog-create-room"] .field-help');
   });
 });
