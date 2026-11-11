@@ -8,7 +8,7 @@
 .results{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
 // A result card on the DARK panel: its text inherits light, so the fill is a
 // translucent light tint (a #f7f7f7 card put that text at ~1.1:1).
-.result a{display:flex;flex-direction:column;text-decoration:none;color:inherit;background:rgba(255,255,255,.06);border-radius:6px;padding:6px}
+.result a{display:flex;flex-direction:column;text-decoration:none;color:inherit;background:rgba(255,255,255,.04);border-radius:6px;padding:6px}
 .sender{font-weight:600;font-size:13px}
 .room{font-size:11px;color:t.$text-muted}
 .snippet{font-size:13px}

@@ -148,20 +148,27 @@ describe('MatrixChatComponent — GUI-19 narrow-viewport layout and secondary te
     }
   });
 
-  it('keeps the title, the signed-in line and the section links on the first rows, the help on its own row', async () => {
-    const f = await frameAt(host, 1280, 800);
-    try {
-      const help = f.box('[data-testid="matrix-nav-help"]');
-      const title = f.box('.topbar h2');
-      const nav = f.box('nav.nav');
-      const topbar = f.box('.topbar');
-      expect(help.top).withContext('help sentence starts below the title row').toBeGreaterThanOrEqual(title.bottom - 1);
-      expect(help.top).withContext('help sentence starts below the links').toBeGreaterThanOrEqual(nav.bottom - 1);
-      expect(help.right - help.left).withContext('help takes the full row').toBeGreaterThan(topbar.width * 0.9);
-    } finally {
-      f.remove();
-    }
-  });
+  for (const width of [320, 390, 1280]) {
+    it(`at ${width}px: the signed-in line and the help sentence get real rows, never a squeezed column`, async () => {
+      const f = await frameAt(host, width, width < 600 ? 844 : 800);
+      try {
+        const topbar = f.box('.topbar');
+        const title = f.box('.topbar h2');
+        const nav = f.box('nav.nav');
+        const whoami = f.box('[data-testid="matrix-whoami"]');
+        const help = f.box('[data-testid="matrix-nav-help"]');
+        expect(help.top).withContext('help sentence starts below the title row').toBeGreaterThanOrEqual(title.bottom - 1);
+        expect(help.top).withContext('help sentence starts below the links').toBeGreaterThanOrEqual(nav.bottom - 1);
+        expect(help.width).withContext('help takes the full row').toBeGreaterThan(topbar.width * 0.9);
+        // Without wrapping, the row squeezed the signed-in line to a column a few
+        // glyphs wide, broken mid-word, beside the title and the links.
+        expect(whoami.width).withContext('signed-in line is not squeezed into a column')
+          .toBeGreaterThan(Math.min(topbar.width * 0.6, 280));
+      } finally {
+        f.remove();
+      }
+    });
+  }
 
   it('People/Rooms headings and the SELECTED room name read at >= 4.5:1 on the dark panel', () => {
     expectReadableOnDarkPanels(host, 'hug-room-list h4');
