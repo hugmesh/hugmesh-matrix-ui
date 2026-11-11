@@ -23,11 +23,13 @@ import { Frame, frameAt } from './layout-frame.spec-util';
  * into a same-origin iframe of the width under test and measured there.
  */
 
-// The live persona's id: a long unbroken token, which is what squeezes the row.
-const USER = '@01b5bbe3-3ce1-4694-99e6-847e3dd5ff30:localhost';
+// Shaped like the live personas' ids (a UUID localpart): a long unbroken token,
+// which is what squeezes the row.
+const USER = '@00000000-1111-2222-3333-444444444444:localhost';
 const ROOMS: MatrixRoom[] = [
   { roomId: '!a:test', name: 'Alpha' },
-  { roomId: '!b:test', name: 'Beta' },
+  // Longer than a phone is wide: a room name must truncate, not widen the page.
+  { roomId: '!b:test', name: 'Beta: the room for everything that does not fit anywhere else on this mesh' },
 ];
 
 class MatrixServiceStub {
