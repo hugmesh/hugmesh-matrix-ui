@@ -19,12 +19,15 @@
  *   - the shell's ROUTED-VIEW backpane: the routed element is a flex item of a
  *     column-flex <main> with auto side margins, so it SHRINK-WRAPS its content
  *     and any unbreakable content widens the whole panel past the viewport;
+ *   - the host's (and styles.scss's) `.sr` visually-hidden utility, so screen-reader
+ *     labels take no room in a row the way they take none on the page;
  *   - no classic scrollbars, which would steal width from the viewport under test. */
 export const HOST_PAGE_CSS = [
   'html,body{overflow-wrap:anywhere}html{scrollbar-width:none}',
   'main.host-outlet{display:flex;flex-direction:column;width:100%;max-width:100%}',
   'main.host-outlet>*{display:block;position:relative;margin:8px auto;padding:12px;max-width:90rem;border:1px solid}',
   '*,::before,::after{box-sizing:border-box}',
+  '.sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}',
   '.row{--bs-gutter-x:1.5rem;--bs-gutter-y:0;display:flex;flex-wrap:wrap;margin-top:calc(-1 * var(--bs-gutter-y));'
     + 'margin-right:calc(-.5 * var(--bs-gutter-x));margin-left:calc(-.5 * var(--bs-gutter-x))}',
   '.row>*{flex-shrink:0;width:100%;max-width:100%;padding-right:calc(var(--bs-gutter-x) * .5);'
