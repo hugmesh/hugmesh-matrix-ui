@@ -154,7 +154,8 @@ describe('TimelineComponent', () => {
     await withEvents([e]);
     const img: HTMLImageElement = fixture.nativeElement.querySelector('img.media');
     expect(img.alt).toContain('cat.png');
-    expect(img.alt).toContain('@alice:test');
+    expect(img.alt).toContain('alice');
+    expect(img.alt).not.toContain('@alice:test');
     expect(img.alt).not.toBe('image');
   });
 
@@ -190,7 +191,8 @@ describe('TimelineComponent', () => {
       // have fetched the sticker mxc as a thumbnail blob.
       expect(img!.getAttribute('src')).toBe('blob:x');
       expect(img!.alt).toContain('smug');
-      expect(img!.alt).toContain('@alice:test');
+      expect(img!.alt).toContain('alice');
+      expect(img!.alt).not.toContain('@alice:test');
       // The body is the image's accessible name — no duplicate .text row.
       const row = fixture.nativeElement.querySelector('[data-testid="event-$s1"]');
       expect(row.querySelector('.text')).toBeNull();
@@ -222,11 +224,19 @@ describe('TimelineComponent', () => {
       expect(sender.textContent.trim()).toBe('Bob');
     });
 
-    it('falls back to the bare mxid when the sender is not in the roster (unknown/departed member)', async () => {
+    it('falls back to the LOCALPART (never the full mxid) when the sender is not in the roster (unknown/departed member)', async () => {
       const e = msg({ eventId: '$g1', sender: '@ghost:hs' });
       await withReceipts([e], {}, [member({ userId: '@bob:hs', displayName: 'Bob' })]);
       const sender = fixture.nativeElement.querySelector('[data-testid="event-$g1"] [data-testid="event-sender"]');
-      expect(sender.textContent.trim()).toBe('@ghost:hs');
+      expect(sender.textContent.trim()).toBe('ghost');
+    });
+
+    it('falls back to the localpart when a rostered member has NO display name', async () => {
+      const uuid = '@c18f905c-62a1-4c20-a7c5-c707fb6eae85:hs';
+      const e = msg({ eventId: '$u1', sender: uuid });
+      await withReceipts([e], {}, [member({ userId: uuid, displayName: undefined })]);
+      const sender = fixture.nativeElement.querySelector('[data-testid="event-$u1"] [data-testid="event-sender"]');
+      expect(sender.textContent.trim()).toBe('c18f905c-62a1-4c20-a7c5-c707fb6eae85');
     });
 
     it('prefers the event\'s own senderDisplayName over the roster name when a caller populated it', async () => {
@@ -289,7 +299,7 @@ describe('TimelineComponent', () => {
 
     it('falls back to the display name when no screenReaderName is present', () => {
       expect(component.senderAriaName(msg({ senderDisplayName: 'Alex' }))).toBe('Alex');
-      expect(component.senderAriaName(msg({ sender: '@bob:test' }))).toBe('@bob:test');
+      expect(component.senderAriaName(msg({ sender: '@bob:test' }))).toBe('bob');
     });
   });
 
@@ -481,11 +491,11 @@ describe('TimelineComponent', () => {
       expect(chip.getAttribute('title')).toBe('山田太郎');
     });
 
-    it('falls back to the bare user id when the reader is not in the roster', async () => {
+    it('falls back to the reader\'s localpart when the reader is not in the roster', async () => {
       await withReceipts([e1], { '@ghost:test': { eventId: '$e1', ts: 5 } }, []);
       const chip = fixture.nativeElement.querySelector('[data-testid="read-receipt-@ghost:test"]');
       expect(chip).toBeTruthy();
-      expect(chip.getAttribute('aria-label')).toBe('Read by @ghost:test');
+      expect(chip.getAttribute('aria-label')).toBe('Read by ghost');
     });
 
     it('renders no receipt group on a message no one (else) has read', async () => {

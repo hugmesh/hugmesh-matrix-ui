@@ -211,7 +211,7 @@ describe('VnStageComponent', () => {
     expect(img.parentElement!.contains(overlay)).toBeTrue(); // sibling under .sprite-body
   });
 
-  it('shows name plates, preferring displayName, falling back to the Matrix id', () => {
+  it('shows name plates, preferring displayName, falling back to the localpart', () => {
     fixture.componentRef.setInput('participants', [
       part('@a:s', { displayName: 'Aria' }),
       part('@b:s', { displayName: undefined }),
@@ -219,7 +219,7 @@ describe('VnStageComponent', () => {
     fixture.detectChanges();
     const plates = qa('[data-testid="name-plate"]') as HTMLElement[];
     expect(plates[0].textContent).toContain('Aria');
-    expect(plates[1].textContent).toContain('@b:s');
+    expect(plates[1].textContent?.trim()).toBe('b');
   });
 
   it('sprite alt announces the ASCII screen-reader name + expression (a11y contract)', () => {

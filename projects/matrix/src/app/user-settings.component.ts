@@ -4,6 +4,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { MatrixService } from './matrix.service';
+import { displayLabel } from './display-label';
 import {
   MAX_MESH_LABEL_LENGTH,
   MeshDevice,
@@ -72,6 +73,9 @@ export class UserSettingsComponent implements OnInit, OnDestroy {
   readonly chatTheme = inject(ChatThemeService);
 
   readonly userId = signal<string | null>(null);
+  /** The SAVED display name (server truth), distinct from the editable
+   *  `displayName` field — it heads the "Signed in as" line. */
+  readonly savedDisplayName = signal('');
   readonly busy = signal(false);
   readonly status = signal('');
   displayName = '';
@@ -102,6 +106,7 @@ export class UserSettingsComponent implements OnInit, OnDestroy {
     if (me) {
       const profile = await this.matrix.getProfile(me);
       this.displayName = profile.displayName ?? '';
+      this.savedDisplayName.set(this.displayName.trim());
       // Preload the CURRENT presence + status so "Update presence" edits the
       // server truth. Without this the form always reset to Online, so opening
       // settings and clicking the button silently un-Away'd the user.
@@ -111,6 +116,12 @@ export class UserSettingsComponent implements OnInit, OnDestroy {
         this.statusMsg = current.statusMsg ?? '';
       }
     }
+  }
+
+  /** Who the caller is signed in as: their display name, else their
+   *  localpart — never the bare `@local:server` (that is secondary text). */
+  signedInLabel(): string {
+    return displayLabel(this.userId(), this.savedDisplayName());
   }
 
   ngOnDestroy(): void {
@@ -123,6 +134,7 @@ export class UserSettingsComponent implements OnInit, OnDestroy {
     this.busy.set(true);
     try {
       await this.matrix.setDisplayName(me, this.displayName.trim());
+      this.savedDisplayName.set(this.displayName.trim());
       this.status.set('Profile saved');
     } catch (e: unknown) {
       this.status.set(`Save failed: ${e instanceof Error ? e.message : String(e)}`);

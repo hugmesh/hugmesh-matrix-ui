@@ -4,7 +4,10 @@
     <a [routerLink]="['./']" [relativeTo]="mount"><span aria-hidden="true">←</span> Back to chat</a>
   </header>
 
-  <p class="uid">Signed in as <strong>{{ userId() }}</strong></p>
+  <p class="uid" data-testid="us-signed-in-as">Signed in as
+    <strong data-testid="us-signed-in-name">{{ signedInLabel() }}</strong>
+    <span *ngIf="userId()" class="mxid" data-testid="us-signed-in-mxid">{{ userId() }}</span>
+  </p>
 
   <label for="us-display-name">Display name
     <input id="us-display-name" data-testid="input-display-name" [(ngModel)]="displayName"

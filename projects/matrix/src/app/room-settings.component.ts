@@ -22,6 +22,7 @@ import { CHAT3D_SCENE_TYPE } from './chat3d/chat3d-scene.service';
 import { CHAT3D_AVATAR_TYPE } from './chat3d/chat3d-avatar.service';
 import { senderMayDriveScene } from './vn/scenes/vn-scene-moderation';
 import { mountRoute } from './mount-route';
+import { displayLabel } from './display-label';
 
 /** Localpart of the Meshtastic bridge appservice bot (`@meshbridge:<server>`). */
 export const MESH_BRIDGE_BOT_LOCALPART = 'meshbridge';
@@ -151,6 +152,10 @@ export class RoomSettingsComponent implements OnInit, OnDestroy {
     this.summary.set(summary);
     this.name.set(summary.name ?? '');
     this.topic.set(summary.topic ?? '');
+    // Power-level rows name people: the room state already taught the service
+    // every current member's display name; look up the rest (departed users
+    // still holding a level) in the background, fail-soft.
+    void this.matrix.resolveDisplayNames?.(Object.keys(summary.powerLevels?.users ?? {}))?.catch(() => undefined);
     // Fail-soft: an unset/unreadable/malformed bridge event renders as "off".
     const mesh = await this.meshBridge.getMeshBridgeState(rid);
     this.meshEnabled.set(mesh?.enabled ?? false);
@@ -221,9 +226,13 @@ export class RoomSettingsComponent implements OnInit, OnDestroy {
       : 'Your account is domain-locked: invites are limited to users on your own domain.';
   }
 
-  powerUsers(): { userId: string; level: number }[] {
+  powerUsers(): { userId: string; label: string; level: number }[] {
     const users = this.summary()?.powerLevels?.users ?? {};
-    return Object.keys(users).map((userId) => ({ userId, level: users[userId] }));
+    return Object.keys(users).map((userId) => ({
+      userId,
+      label: displayLabel(userId, this.matrix.displayNameOf?.(userId)),
+      level: users[userId],
+    }));
   }
 
   // ── Mesh bridge (LoRa) ──

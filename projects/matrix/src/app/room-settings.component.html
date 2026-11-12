@@ -71,7 +71,10 @@
   <hr />
   <h4 id="rs-powers-heading">Power levels</h4>
   <ul class="powers" aria-labelledby="rs-powers-heading">
-    <li *ngFor="let u of powerUsers()">{{ u.userId }}: {{ u.level }}</li>
+    <li *ngFor="let u of powerUsers()" [attr.data-testid]="'power-user-' + u.userId" [attr.title]="u.userId">
+      <span class="who">{{ u.label }}</span>: {{ u.level }}
+      <span class="mxid">{{ u.userId }}</span>
+    </li>
   </ul>
 
   <hr />

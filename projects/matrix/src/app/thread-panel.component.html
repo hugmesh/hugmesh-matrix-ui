@@ -3,14 +3,14 @@
     <a [routerLink]="['rooms', roomId()]" [relativeTo]="mount"><span aria-hidden="true">←</span> Back to room</a></header>
 
   <div *ngIf="root() as r" class="thread-root" data-testid="thread-root">
-    <strong>{{ r.senderDisplayName || r.sender }}</strong>
+    <strong [attr.title]="r.sender">{{ senderLabel(r) }}</strong>
     <span>{{ r.body }}</span>
   </div>
 
   <ul class="replies" aria-label="Thread replies" aria-live="polite">
     <li *ngFor="let e of replies()" class="reply"
         [attr.data-testid]="'thread-reply-' + e.eventId">
-      <strong>{{ e.senderDisplayName || e.sender }}:</strong> <span>{{ e.body }}</span>
+      <strong [attr.title]="e.sender">{{ senderLabel(e) }}:</strong> <span>{{ e.body }}</span>
     </li>
   </ul>
 
@@ -26,7 +26,7 @@
       <li *ngFor="let t of threadRoots()"
           [attr.data-testid]="'thread-list-item-' + t.eventId">
         <a [routerLink]="['rooms', roomId(), 'thread', t.eventId]" [relativeTo]="mount">
-          {{ t.senderDisplayName || t.sender }}: {{ t.body }}
+          {{ senderLabel(t) }}: {{ t.body }}
         </a>
       </li>
     </ul>

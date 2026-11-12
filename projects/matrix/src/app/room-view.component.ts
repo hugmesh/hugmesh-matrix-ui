@@ -12,6 +12,7 @@ import { DEFAULT_EXPRESSION, Expression, expressionForEvent } from './vn/express
 import { ChatThemeRootDirective } from './theme/chat-theme-root.directive';
 import { Chat3dStateService } from './chat3d/chat3d-state.service';
 import { mountRoute } from './mount-route';
+import { displayLabel } from './display-label';
 import { VIEW_RELOAD_EVENT } from './shell-events';
 
 type ComposerMode = 'send' | 'reply' | 'edit' | 'thread';
@@ -185,7 +186,7 @@ export class RoomViewComponent implements OnInit, OnChanges, OnDestroy {
         return;
       }
       this.characterOwner.set(ev.sender);
-      this.characterOwnerName.set(ev.senderDisplayName ?? ev.sender);
+      this.characterOwnerName.set(displayLabel(ev.sender, ev.senderDisplayName || this.matrix.displayNameOf?.(ev.sender)));
       this.characterOwnerSrName.set(ev.senderScreenReaderName ?? null);
       this.characterExpression.set(expressionForEvent(ev.content, ev.body));
     });

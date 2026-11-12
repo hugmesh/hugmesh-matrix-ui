@@ -139,6 +139,35 @@ describe('RoleActionsComponent', () => {
 
   // ───────────────────────── USER tier behaviour ─────────────────────────
 
+  it('NAMES the target (targetName, else localpart) in its copy but still sends the full mxid to the BFF', async () => {
+    await setup(true, false, false);
+    expect(q('role-actions-trigger')?.getAttribute('aria-label')).toBe('Moderation and self-actions for spam');
+    component.targetName = 'Spammy McSpamface';
+    fixture.detectChanges();
+    expect(q('role-actions-trigger')?.getAttribute('aria-label')).toBe('Moderation and self-actions for Spammy McSpamface');
+    expect(q('ra-block-user')?.getAttribute('aria-label')).toBe('Block or mute Spammy McSpamface');
+    component.blockPlatform = 'matrix';
+    component.blockTarget();
+    expect(userBff.block).toHaveBeenCalledWith('@spam:evil.test', 'matrix');
+  });
+
+  it('labels a block-list entry by localpart, keeps the full mxid as secondary text, and leaves an instance unchanged', async () => {
+    await setup(true, false, false);
+    component.blocks.set([
+      { id: 1, target: '@spam:evil.test', platform: 'matrix' } as any,
+      { id: 2, target: 'evil.test', platform: 'internal' } as any,
+    ]);
+    fixture.detectChanges();
+    const user = q('ra-myblock-1')!.querySelector('.b-target') as HTMLElement;
+    expect(user.firstChild?.textContent?.trim()).toBe('spam');
+    expect(user.querySelector('.full-id')?.textContent).toBe('@spam:evil.test');
+    expect(user.getAttribute('title')).toBe('@spam:evil.test');
+    expect(q('ra-unblock-1')?.getAttribute('aria-label')).toBe('Remove block on spam');
+    const inst = q('ra-myblock-2')!.querySelector('.b-target') as HTMLElement;
+    expect(inst.textContent?.trim()).toBe('evil.test');
+    expect(inst.querySelector('.full-id')).toBeNull();
+  });
+
   it('blocks the target on matrix and announces the result in role=status', async () => {
     await setup(true, false, false);
     component.blockPlatform = 'matrix';
@@ -147,7 +176,7 @@ describe('RoleActionsComponent', () => {
     expect(userBff.block).toHaveBeenCalledWith('@spam:evil.test', 'matrix');
     const status = q('role-actions-status');
     expect(status?.getAttribute('role')).toBe('status');
-    expect(status?.textContent).toContain('Blocked @spam:evil.test');
+    expect(status?.textContent).toContain('Blocked spam (matrix)');
   });
 
   it('supports an internal-only self-block', async () => {

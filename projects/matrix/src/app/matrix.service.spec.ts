@@ -290,6 +290,74 @@ describe('MatrixService (hsproxy — no homeserver token in the browser)', () =>
     expect(state.invites['!inv:test']).toEqual({ roomId: '!inv:test', name: 'Secret plans', inviter: '@alice:test' });
   });
 
+  // ─────────────────── Display names (never the bare mxid) ───────────────────
+
+  it('names the inviter from THEIR OWN member event in invite_state, in any order', async () => {
+    fetchSpy.and.resolveTo(jsonResponse({
+      next_batch: 's2',
+      rooms: {
+        invite: {
+          '!inv:test': {
+            invite_state: { events: [
+              // the invite comes BEFORE the inviter's own member event
+              { type: 'm.room.member', sender: '@c18f:test', state_key: '@me:test', content: { membership: 'invite' } },
+              { type: 'm.room.member', sender: '@c18f:test', state_key: '@c18f:test', content: { membership: 'join', displayname: ' e2e-matrix ' } },
+            ] },
+          },
+        },
+      },
+    }));
+    const state = await service.sync('s1', 0);
+    expect(state.invites['!inv:test'].inviter).toBe('@c18f:test');
+    expect(state.invites['!inv:test'].inviterName).toBe('e2e-matrix');
+    expect(service.labelFor('@c18f:test')).toBe('e2e-matrix');
+  });
+
+  it('labelFor() is the display name seen in /sync member state, else the localpart — never the full mxid', async () => {
+    fetchSpy.and.resolveTo(jsonResponse({
+      next_batch: 's2',
+      rooms: { join: { '!r:test': {
+        state: { events: [
+          { type: 'm.room.member', sender: '@a:test', state_key: '@a:test', content: { membership: 'join', displayname: 'Alice' } },
+        ] },
+        timeline: { events: [
+          { type: 'm.room.member', sender: '@b:test', state_key: '@b:test', content: { membership: 'join' } },
+        ] },
+      } } },
+    }));
+    await service.sync('s1', 0);
+    expect(service.labelFor('@a:test')).toBe('Alice');
+    expect(service.labelFor('@b:test')).toBe('b');
+    expect(service.labelFor('@nobody:test')).toBe('nobody');
+  });
+
+  it('joinedMembers() and getProfile() teach the label cache', async () => {
+    fetchSpy.and.callFake(async (url: string) => {
+      if (String(url).includes('/joined_members')) {
+        return jsonResponse({ joined: { '@m:test': { display_name: 'Member M' } } });
+      }
+      if (String(url).includes('/profile/')) return jsonResponse({ displayname: 'Profile P' });
+      return jsonResponse({}, { ok: false, status: 404 });
+    });
+    await service.joinedMembers('!r:test');
+    await service.getProfile('@p:test');
+    expect(service.displayNameOf('@m:test')).toBe('Member M');
+    expect(service.labelFor('@p:test')).toBe('Profile P');
+  });
+
+  it('resolveDisplayNames() looks each unknown mxid up ONCE, skips known ids and non-mxids, and is fail-soft', async () => {
+    fetchSpy.and.callFake(async (url: string) => {
+      if (String(url).includes('/profile/@x:test')) return jsonResponse({ displayname: 'Xavier' });
+      throw new Error('network down');
+    });
+    await service.resolveDisplayNames(['@x:test', '@x:test', '@dead:test', 'evil.test', null]);
+    await service.resolveDisplayNames(['@x:test', '@dead:test']);
+    const profileCalls = fetchSpy.calls.allArgs().filter((a) => String(a[0]).includes('/profile/'));
+    expect(profileCalls.length).toBe(2);
+    expect(service.labelFor('@x:test')).toBe('Xavier');
+    expect(service.labelFor('@dead:test')).toBe('dead');
+  });
+
   it('falls back to the room id as the invite name when the stripped state has no m.room.name', async () => {
     fetchSpy.and.resolveTo(jsonResponse({
       next_batch: 's2',

@@ -6,6 +6,8 @@ label{display:flex;flex-direction:column;font-size:13px;gap:2px}
 .leave{color:#c00}
 .status{font-size:12px;color:t.$text-muted}
 .powers{list-style:none;margin:0;padding:0;font-size:12px}
+.powers li{overflow-wrap:anywhere}
+.powers .mxid{display:block;font-size:11px;color:t.$text-muted}
 // --hug-success, not #0a7d52 (~2.6:1 on the dark panel).
 .domain-lock-note{margin:0;font-size:12px;color:var(--hug-success, #4caf50);display:flex;align-items:center;gap:4px}
 .field-help{margin:2px 0 0;font-size:11px;color:t.$text-muted}

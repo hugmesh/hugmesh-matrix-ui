@@ -1,4 +1,5 @@
-import { Injectable, InjectionToken, inject } from '@angular/core';
+import { Injectable, InjectionToken, inject, signal } from '@angular/core';
+import { displayLabel, isMxid, localpartOf } from './display-label';
 import { LEGACY_MESH_EVENT_CONTENT_FIELDS } from './legacy-read';
 
 /**
@@ -362,7 +363,11 @@ export interface RoomPreview {
 export interface PendingInvite {
   roomId: string;
   name: string;
+  /** The inviting user's mxid (the invite member event's sender). */
   inviter?: string;
+  /** The inviter's display name, from their own m.room.member event in the
+   *  stripped invite_state when the homeserver includes it. */
+  inviterName?: string;
   avatarUrl?: string;
 }
 
@@ -710,6 +715,9 @@ export class MatrixService {
           }
         }
       }
+      // Raw events: mapEvent() does not carry state_key on /sync events.
+      this.rememberMemberEvents([...(jr.state?.events ?? []), ...(jr.timeline?.events ?? [])]
+        .map((e: any) => ({ type: e?.type, stateKey: e?.state_key, content: e?.content })));
       out.rooms[roomId] = {
         timeline: (jr.timeline?.events ?? []).map((e: any) => this.mapEvent(e, roomId)),
         prevBatch: jr.timeline?.prev_batch,
@@ -736,6 +744,17 @@ export class MatrixService {
         // The invite membership event's SENDER is the inviting user.
         if (ev.type === 'm.room.member' && ev.content?.membership === 'invite' && ev.sender) {
           invite.inviter = ev.sender;
+        }
+      }
+      // The inviter's display name rides on THEIR OWN member event in the
+      // stripped state (state_key = inviter), when the homeserver includes it.
+      // Resolved after the loop: invite_state order is not guaranteed.
+      if (invite.inviter) {
+        const own = events.find((ev) => ev.type === 'm.room.member' && ev.state_key === invite.inviter);
+        const name = typeof own?.content?.displayname === 'string' ? own.content.displayname.trim() : '';
+        if (name) {
+          invite.inviterName = name;
+          this.rememberName(invite.inviter, name);
         }
       }
       out.invites[roomId] = invite;
@@ -848,8 +867,70 @@ export class MatrixService {
   /** The localpart of a Matrix user id (`@local:server` → `local`); the id
    *  itself when it doesn't parse (fail-soft — it only feeds display copy). */
   private localpart(userId: string): string {
-    const m = /^@([^:]+):/.exec(userId);
-    return m ? m[1] : userId;
+    return localpartOf(userId);
+  }
+
+  // ─────────────────────────── Display names ───────────────────────────
+
+  /**
+   * Display names this client has SEEN, keyed by mxid: filled from every
+   * roster, room-state, /sync member event, invite_state and profile read the
+   * service already makes. A signal, so a template that labels a user through
+   * {@link labelFor} re-renders once a name arrives.
+   */
+  private readonly knownNames = signal<Record<string, string>>({});
+  /** Ids a profile lookup has already been issued for (dedupe; fail-soft). */
+  private readonly profileLookups = new Set<string>();
+
+  /** The display name seen for `userId`, if any. */
+  displayNameOf(userId: string | null | undefined): string | undefined {
+    return userId ? this.knownNames()[userId] : undefined;
+  }
+
+  /** What to SHOW for `userId`: its display name, else its localpart — never
+   *  the full `@local:server` (see {@link displayLabel}). */
+  labelFor(userId: string | null | undefined): string {
+    return displayLabel(userId, this.displayNameOf(userId));
+  }
+
+  /**
+   * Make sure a display name is known for each of `userIds`, fetching the
+   * profile of any id the client has not seen a name for. Each id is looked
+   * up at most once per session; failures are swallowed (the label simply
+   * stays the localpart). Non-mxids are ignored.
+   */
+  async resolveDisplayNames(userIds: Iterable<string | null | undefined>): Promise<void> {
+    const todo: string[] = [];
+    for (const id of userIds) {
+      if (!id || !isMxid(id) || this.knownNames()[id] || this.profileLookups.has(id)) continue;
+      this.profileLookups.add(id);
+      todo.push(id);
+    }
+    await Promise.all(todo.map((id) => this.getProfile(id).catch(() => undefined)));
+  }
+
+  private rememberName(userId: string, name: string | null | undefined): void {
+    const trimmed = typeof name === 'string' ? name.trim() : '';
+    const current = this.knownNames()[userId];
+    if (trimmed) {
+      if (current === trimmed) return;
+      this.knownNames.update((m) => ({ ...m, [userId]: trimmed }));
+    } else if (current !== undefined) {
+      this.knownNames.update((m) => {
+        const next = { ...m };
+        delete next[userId];
+        return next;
+      });
+    }
+  }
+
+  /** Record the display names carried by joined members' m.room.member events. */
+  private rememberMemberEvents(events: Pick<TimelineEvent, 'type' | 'stateKey' | 'content'>[]): void {
+    for (const e of events) {
+      if (e.type !== 'm.room.member' || !e.stateKey) continue;
+      if (e.content?.membership !== 'join' && e.content?.membership !== 'invite') continue;
+      this.rememberName(e.stateKey, e.content?.displayname);
+    }
   }
 
   /** Derive name/topic/avatar/canonical_alias/join_rule/power_levels from a
@@ -904,6 +985,9 @@ export class MatrixService {
    *  fallback (the state also carries every m.room.member event) instead of
    *  fetching state AND the joined_members roster per unnamed room. */
   private summaryFromState(state: TimelineEvent[]): RoomSummary {
+    // The full state carries every member event: learn their display names
+    // here so power-level rows and other id-keyed surfaces can label people.
+    this.rememberMemberEvents(state);
     // State events with an empty state_key carry the canonical room metadata.
     const pick = (type: string) => state.find((e) => e.type === type && (e.stateKey ?? '') === '')?.content;
     const name = pick('m.room.name');
@@ -1063,6 +1147,7 @@ export class MatrixService {
       const pl = await this.getStateEvent(roomId, 'm.room.power_levels');
       if (pl) { powerUsers = pl.users ?? {}; usersDefault = pl.users_default ?? 0; }
     } catch { /* ignore */ }
+    for (const userId of Object.keys(joined)) this.rememberName(userId, joined[userId]?.display_name);
     return Object.keys(joined).map((userId) => ({
       userId,
       displayName: joined[userId]?.display_name,
@@ -1391,6 +1476,7 @@ export class MatrixService {
     const r = await this.hsFetch(`${this.baseUrl}/_matrix/client/v3/profile/${this.enc(userId)}`, { headers: this.headers() });
     if (!r.ok) return { userId };
     const data = await r.json();
+    this.rememberName(userId, data.displayname);
     return { userId, displayName: data.displayname, avatarUrl: data.avatar_url };
   }
 

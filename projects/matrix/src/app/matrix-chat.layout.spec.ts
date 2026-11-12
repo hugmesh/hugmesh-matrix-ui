@@ -34,6 +34,9 @@ const ROOMS: MatrixRoom[] = [
 
 class MatrixServiceStub {
   whoami = jasmine.createSpy('whoami').and.resolveTo(USER);
+  // The shell resolves the user AND the account's Matrix access in one call
+  // (#34); without it every spec here died in ngOnInit before measuring.
+  whoamiAccess = jasmine.createSpy('whoamiAccess').and.resolveTo({ userId: USER, forbidden: null });
   joinedRoomsDetailed = jasmine.createSpy('joinedRoomsDetailed').and.resolveTo(ROOMS);
   sync = jasmine.createSpy('sync').and.returnValue(new Promise<SyncState>(() => undefined));
   mxcToHttp = jasmine.createSpy('mxcToHttp').and.returnValue('');

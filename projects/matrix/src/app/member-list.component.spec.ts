@@ -49,6 +49,15 @@ describe('MemberListComponent', () => {
     expect(component.members().map((m) => m.userId)).toEqual(['@admin:test', '@bob:test']);
   });
 
+  it('names a member with no display name by LOCALPART, never the full mxid, and hands the label to role-actions', () => {
+    const row: HTMLElement = fixture.nativeElement.querySelector('[data-testid="member-@bob:test"]');
+    const name = row.querySelector('.name') as HTMLElement;
+    expect(name.textContent?.trim()).toBe('bob');
+    expect(name.getAttribute('title')).toBe('@bob:test');
+    expect(row.querySelector('[data-testid="btn-kick-@bob:test"]')?.getAttribute('aria-label')).toBe('Kick bob');
+    expect(component.label({ userId: '@admin:test', displayName: 'Admin', membership: 'join', powerLevel: 100 })).toBe('Admin');
+  });
+
   it('renders the member list as a labelled region', () => {
     const section = fixture.nativeElement.querySelector('[data-testid="member-list"]');
     expect(section.getAttribute('aria-label')).toBeTruthy();

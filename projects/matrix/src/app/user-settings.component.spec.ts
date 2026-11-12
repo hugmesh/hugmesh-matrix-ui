@@ -75,6 +75,22 @@ describe('UserSettingsComponent', () => {
     expect(component.displayName).toBe('Me');
   });
 
+  it('"Signed in as" NAMES the user (display name) with the mxid as secondary text', async () => {
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('[data-testid="us-signed-in-name"]')?.textContent?.trim()).toBe('Me');
+    expect(el.querySelector('[data-testid="us-signed-in-mxid"]')?.textContent?.trim()).toBe('@me:test');
+  });
+
+  it('"Signed in as" falls back to the localpart, not the full mxid, when no display name is set', async () => {
+    matrix.getProfile.and.resolveTo({ userId: '@me:test' });
+    await component.ngOnInit();
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('[data-testid="us-signed-in-name"]')?.textContent?.trim()).toBe('me');
+  });
+
   it('labels every form control with an explicit <label for>', () => {
     const el = fixture.nativeElement;
     for (const id of [

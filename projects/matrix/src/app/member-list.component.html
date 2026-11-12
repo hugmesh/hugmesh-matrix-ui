@@ -53,12 +53,12 @@
             [attr.aria-label]="'Presence: ' + (m.presence || 'offline')"
             role="img"></span>
       <span class="avatar" aria-hidden="true" [style.background-image]="bg(m)"></span>
-      <span class="name">{{ m.displayName || m.userId }}</span>
+      <span class="name" [attr.title]="m.userId">{{ label(m) }}</span>
       <span class="power" [attr.data-testid]="'member-power-' + m.userId">{{ powerLabel(m.powerLevel) }}</span>
       <button type="button" class="kick" [attr.data-testid]="'btn-kick-' + m.userId"
               [attr.aria-label]="'Kick ' + ariaName(m)"
               aria-describedby="member-kick-help" (click)="doKick(m)">Kick</button>
-      <hug-role-actions [target]="m.userId" [isSelf]="m.userId === me()"></hug-role-actions>
+      <hug-role-actions [target]="m.userId" [targetName]="label(m)" [isSelf]="m.userId === me()"></hug-role-actions>
     </li>
   </ul>
   </ng-container>

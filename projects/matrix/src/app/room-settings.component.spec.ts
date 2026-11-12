@@ -67,7 +67,16 @@ describe('RoomSettingsComponent', () => {
   it('loads the room summary into the editable fields', () => {
     expect(component.name()).toBe('General');
     expect(component.topic()).toBe('Chat');
-    expect(component.powerUsers()).toEqual([{ userId: '@admin:test', level: 100 }]);
+    expect(component.powerUsers()).toEqual([{ userId: '@admin:test', label: 'admin', level: 100 }]);
+  });
+
+  it('NAMES power-level users (display name the service has seen, else localpart), full mxid as secondary text', () => {
+    (matrix as any).displayNameOf = (id: string) => (id === '@admin:test' ? 'Room Admin' : undefined);
+    fixture.detectChanges();
+    expect(component.powerUsers()).toEqual([{ userId: '@admin:test', label: 'Room Admin', level: 100 }]);
+    const row: HTMLElement = fixture.nativeElement.querySelector('[data-testid="power-user-@admin:test"]');
+    expect(row.querySelector('.who')?.textContent?.trim()).toBe('Room Admin');
+    expect(row.querySelector('.mxid')?.textContent?.trim()).toBe('@admin:test');
   });
 
   it('associates every text field with an explicit <label for>', () => {

@@ -98,8 +98,9 @@
           [attr.data-testid]="'invite-item-' + inv.roomId">
         <span class="avatar" aria-hidden="true" [style.background-image]="inviteBg(inv)"></span>
         <span class="name">{{ inv.name }}</span>
-        <span *ngIf="inv.inviter" class="inviter" [attr.data-testid]="'invite-inviter-' + inv.roomId">
-          invited by {{ inv.inviter }}
+        <span *ngIf="inv.inviter" class="inviter" [attr.data-testid]="'invite-inviter-' + inv.roomId"
+              [attr.title]="inv.inviter">
+          invited by {{ inviterLabel(inv) }}
         </span>
         <button type="button" [attr.data-testid]="'btn-accept-invite-' + inv.roomId"
                 [attr.aria-label]="'Accept the invite to ' + inv.name"
