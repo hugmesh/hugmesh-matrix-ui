@@ -12,6 +12,7 @@ import { DEFAULT_EXPRESSION, Expression, expressionForEvent } from './vn/express
 import { ChatThemeRootDirective } from './theme/chat-theme-root.directive';
 import { Chat3dStateService } from './chat3d/chat3d-state.service';
 import { mountRoute } from './mount-route';
+import { displayLabel } from './display-label';
 import { VIEW_RELOAD_EVENT } from './shell-events';
 
 type ComposerMode = 'send' | 'reply' | 'edit' | 'thread';
@@ -138,6 +139,11 @@ export class RoomViewComponent implements OnInit, OnChanges, OnDestroy {
   readonly liveEvents = computed(() => this.feed()?.timeline ?? null);
   readonly typingUsers = computed(() => (this.feed()?.typing ?? []).filter((u) => u !== this.me()));
 
+  /** A typer's NAME: display name the service has seen, else localpart. */
+  typingLabel(userId: string): string {
+    return displayLabel(userId, this.matrix.displayNameOf?.(userId));
+  }
+
   // ── VN live character (B2, Path A) ───────────────────────────────────────
   // The latest message-bearing timeline event drives an OPTIONAL character
   // beside the timeline: its sender owns the character, its content the
@@ -185,7 +191,7 @@ export class RoomViewComponent implements OnInit, OnChanges, OnDestroy {
         return;
       }
       this.characterOwner.set(ev.sender);
-      this.characterOwnerName.set(ev.senderDisplayName ?? ev.sender);
+      this.characterOwnerName.set(displayLabel(ev.sender, ev.senderDisplayName || this.matrix.displayNameOf?.(ev.sender)));
       this.characterOwnerSrName.set(ev.senderScreenReaderName ?? null);
       this.characterExpression.set(expressionForEvent(ev.content, ev.body));
     });

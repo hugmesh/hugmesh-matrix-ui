@@ -90,9 +90,24 @@ describe('RoomListComponent', () => {
       const row = fixture.nativeElement.querySelector('[data-testid="invite-item-!inv:test"]');
       expect(row).toBeTruthy();
       expect(row.textContent).toContain('Secret plans');
-      expect(row.textContent).toContain('invited by @alice:test');
+      // The inviter is NAMED (localpart when no display name is known), with
+      // the full mxid kept as the title — never 'invited by @alice:test'.
+      expect(row.textContent).toContain('invited by alice');
+      expect(row.textContent).not.toContain('@alice:test');
+      expect(row.querySelector('[data-testid="invite-inviter-!inv:test"]').getAttribute('title')).toBe('@alice:test');
       expect(row.querySelector('[data-testid="btn-accept-invite-!inv:test"]')).toBeTruthy();
       expect(row.querySelector('[data-testid="btn-decline-invite-!inv:test"]')).toBeTruthy();
+    });
+
+    it('names the inviter by the display name from invite_state', async () => {
+      matrix.pendingInvites.and.resolveTo([{ ...INVITE, inviterName: 'Alice A.' }]);
+      fixture = TestBed.createComponent(RoomListComponent);
+      fixture.componentInstance.rooms = signal(ROOMS);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      const who = fixture.nativeElement.querySelector('[data-testid="invite-inviter-!inv:test"]');
+      expect(who.textContent.trim()).toBe('invited by Alice A.');
     });
 
     it('GUI-19: the room name and "invited by" line read at >= 4.5:1 on the dark panel (inviter was #888)', async () => {

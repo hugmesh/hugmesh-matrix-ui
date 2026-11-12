@@ -6,15 +6,15 @@
     class="role-actions-trigger"
     data-testid="role-actions-trigger"
     [attr.aria-expanded]="open()"
-    [attr.aria-label]="'Moderation and self-actions for ' + (target || 'this user')"
+    [attr.aria-label]="'Moderation and self-actions for ' + (targetLabel() || 'this user')"
     (click)="toggle()">
     <span aria-hidden="true">⋯</span>
-    <span class="sr">Moderation and self-actions for {{ target || 'this user' }}</span>
+    <span class="sr">Moderation and self-actions for {{ targetLabel() || 'this user' }}</span>
   </button>
 
   @if (open()) {
   <div class="role-actions-menu" [class.inline]="inline" data-testid="role-actions-menu" role="group"
-       [attr.aria-label]="'Actions for ' + (target || 'this user')">
+       [attr.aria-label]="'Actions for ' + (targetLabel() || 'this user')">
 
     <!-- async result live regions: success = status, error = alert -->
     <p class="result status" role="status" aria-live="polite" data-testid="role-actions-status"
@@ -37,7 +37,7 @@
           <option value="internal">Internal only</option>
         </select>
         <button type="button" data-testid="ra-block-user"
-                [attr.aria-label]="'Block or mute ' + target"
+                [attr.aria-label]="'Block or mute ' + targetLabel()"
                 aria-describedby="ra-block-help"
                 (click)="blockTarget()">Block / mute user</button>
       </div>
@@ -65,10 +65,11 @@
         <h5>Your blocks</h5>
         <ul>
           <li *ngFor="let b of blocks()" [attr.data-testid]="'ra-myblock-' + b.id">
-            <span class="b-target">{{ b.target }}</span>
+            <span class="b-target" [attr.title]="b.target">{{ idLabel(b.target) }}<span
+                  *ngIf="isMxid(b.target)" class="full-id">{{ b.target }}</span></span>
             <span class="b-platform">{{ b.platform }}</span>
             <button type="button" [attr.data-testid]="'ra-unblock-' + b.id"
-                    [attr.aria-label]="'Remove block on ' + b.target"
+                    [attr.aria-label]="'Remove block on ' + idLabel(b.target)"
                     (click)="unblock(b)">Remove</button>
           </li>
         </ul>
@@ -118,7 +119,8 @@
         <ul *ngIf="queue().length">
           <li *ngFor="let req of queue()" [attr.data-testid]="'ra-queue-' + req.id">
             <span class="q-kind">{{ req.kind }}</span>
-            <span class="q-target">{{ req.target }}</span>
+            <span class="q-target" [attr.title]="req.target">{{ idLabel(req.target) }}<span
+                  *ngIf="isMxid(req.target)" class="full-id">{{ req.target }}</span></span>
             <span class="q-status" [attr.data-status]="req.status">{{ req.status }}</span>
             <button type="button" [attr.data-testid]="'ra-refer-' + req.id"
                     [attr.aria-label]="'Refer request ' + req.id + ' to an admin'"

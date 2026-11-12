@@ -5,6 +5,7 @@ import { Router } from '@angular/router';
 import { MatrixService, MatrixRoom, PendingInvite } from './matrix.service';
 import { SessionService } from './session.service';
 import { mountRoute } from './mount-route';
+import { displayLabel } from './display-label';
 
 /**
  * Element Web LeftPanel / RoomList. Lists joined rooms grouped into Rooms vs
@@ -96,8 +97,19 @@ export class RoomListComponent implements OnInit {
    *  blocking the joined-room list). */
   private async loadInvites(): Promise<void> {
     try {
-      this.invites.set((await this.matrix.pendingInvites?.()) ?? []);
+      const invites = (await this.matrix.pendingInvites?.()) ?? [];
+      this.invites.set(invites);
+      // An inviter whose own member event was not in the stripped state has
+      // no name yet: look their profile up (fail-soft) so the row can say who.
+      const unnamed = invites.filter((i) => i.inviter && !i.inviterName).map((i) => i.inviter!);
+      if (unnamed.length) void this.matrix.resolveDisplayNames?.(unnamed)?.catch(() => undefined);
     } catch { /* fail-soft: no invite section */ }
+  }
+
+  /** Who invited: the inviter's display name (invite_state, else a profile
+   *  lookup), else their localpart — never the bare `@local:server`. */
+  inviterLabel(inv: PendingInvite): string {
+    return displayLabel(inv.inviter, inv.inviterName || this.matrix.displayNameOf?.(inv.inviter));
   }
 
   /** Accept a pending invite: join the room, drop its row locally, then

@@ -2,6 +2,7 @@ import { Component, ElementRef, EventEmitter, Input, OnChanges, OnDestroy, OnIni
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { CloakCapability, CloakMode, CloakStatus, MatrixService, TimelineEvent } from './matrix.service';
+import { displayLabel } from './display-label';
 import { SessionService } from './session.service';
 import { HugStickerPickerComponent } from './vn/hug-sticker-picker.component';
 
@@ -205,7 +206,9 @@ export class ComposerComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   targetSummary(): string {
-    return this.target ? (this.target.senderDisplayName || this.target.sender) : '';
+    if (!this.target) return '';
+    const sender = this.target.sender;
+    return displayLabel(sender, this.target.senderDisplayName || this.matrix.displayNameOf?.(sender));
   }
 
   appendEmoji(): void {

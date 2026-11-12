@@ -2,6 +2,7 @@ import { Component, ElementRef, OnDestroy, OnInit, ViewChild, computed, inject, 
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
 import { MatrixService, MatrixRoom, RoomMember } from './matrix.service';
+import { displayLabel } from './display-label';
 import { StageParticipant, VnStageComponent } from './vn/stage/vn-stage.component';
 import { VnSceneControlsComponent } from './vn/stage/vn-scene-controls.component';
 import { VnSceneState, VnSceneStateService } from './vn/scenes/vn-scene-state.service';
@@ -442,7 +443,7 @@ export class MatrixCallComponent implements OnInit, OnDestroy {
     this.dialogue.set({
       eventId: msg.event_id,
       sender: msg.sender,
-      senderName: member?.displayName || msg.sender,
+      senderName: displayLabel(msg.sender, member?.displayName),
       body,
       fullBody,
     });
@@ -470,7 +471,7 @@ export class MatrixCallComponent implements OnInit, OnDestroy {
     const member = this.members().get(userId);
     return {
       userId,
-      displayName: member?.displayName || userId,
+      displayName: displayLabel(userId, member?.displayName),
       screenReaderName: member?.screenReaderName,
       imgUrl: this.images()[userId] ?? NEUTRAL_SILHOUETTE_URL,
       speaking,

@@ -8,6 +8,7 @@ import { RoomListComponent } from './room-list.component';
 import { RoomViewComponent } from './room-view.component';
 import { ChatThemeRootDirective } from './theme/chat-theme-root.directive';
 import { mountRoute } from './mount-route';
+import { displayLabel } from './display-label';
 import { ClientConnectBannerComponent } from './client-connect/client-connect-banner.component';
 import { VIEW_RELOAD_EVENT } from './shell-events';
 import { MemberListComponent } from './member-list.component';
@@ -52,6 +53,12 @@ export class MatrixChatComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
 
   readonly userId = signal<string | null>(null);
+  /** Who the caller is signed in as: display name, else localpart — the full
+   *  `@local:server` stays on the line's title (and in Settings). */
+  readonly signedInLabel = computed(() => {
+    const id = this.userId();
+    return displayLabel(id, this.matrix.displayNameOf?.(id));
+  });
   /**
    * Whether this account may use Matrix at all. `checking` until whoami answers
    * (the shell — room list included, which fires its own CS-API calls — mounts
@@ -90,6 +97,8 @@ export class MatrixChatComponent implements OnInit, OnDestroy {
       return;
     }
     this.userId.set(who.userId);
+    // The top bar NAMES the caller: learn their display name (fail-soft).
+    if (who.userId) void this.matrix.resolveDisplayNames?.([who.userId])?.catch(() => undefined);
     this.access.set('ok');
     const rooms = await this.matrix.joinedRoomsDetailed();
     this.rooms.set(rooms);

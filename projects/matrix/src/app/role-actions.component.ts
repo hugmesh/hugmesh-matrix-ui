@@ -5,6 +5,7 @@ import { SessionService } from './session.service';
 import { UserBffService, UserBlock, BlockPlatform } from './user-bff.service';
 import { ModBffService, ModerationRequest } from './mod-bff.service';
 import { AdminBffService } from './admin-bff.service';
+import { displayLabel, isMxid } from './display-label';
 
 /**
  * Role-responsive moderation/self-action surface for the Matrix remote.
@@ -45,6 +46,9 @@ import { AdminBffService } from './admin-bff.service';
 export class RoleActionsComponent implements OnInit, OnDestroy {
   /** The Matrix user id this action surface targets, e.g. `@spam:evil.test`. */
   @Input() target = '';
+  /** The target's display name, when the host knows it (member list). Only
+   *  the shown/announced copy uses it — every BFF call still sends `target`. */
+  @Input() targetName?: string | null;
   /** Optional homeserver/instance the target belongs to (defaults to the domain
    *  part of the user id). Used for instance-block recommendation + mod block. */
   @Input() instance?: string;
@@ -121,6 +125,22 @@ export class RoleActionsComponent implements OnInit, OnDestroy {
     this.open.set(false);
   }
 
+  /** How the target is NAMED in copy: display name, else localpart. */
+  targetLabel(): string {
+    return displayLabel(this.target, this.targetName);
+  }
+
+  /** How a block/queue target is named: a user's localpart (the full id stays
+   *  in the secondary line); an instance or other non-mxid unchanged. */
+  idLabel(id: string): string {
+    return displayLabel(id);
+  }
+
+  /** Whether `id` is a Matrix user id (so a secondary full-id line helps). */
+  isMxid(id: string): boolean {
+    return isMxid(id);
+  }
+
   // ───────────────────────────── USER tier ─────────────────────────────
 
   /** Block/mute the target on Matrix (or internal-only). */
@@ -128,8 +148,8 @@ export class RoleActionsComponent implements OnInit, OnDestroy {
     if (!this.target) return;
     this.clearMessages();
     this.userBff.block(this.target, this.blockPlatform).subscribe({
-      next: (ack) => this.ok(`Blocked ${this.target} (${this.blockPlatform}). External push: ${ack.external}.`),
-      error: () => this.fail(`Could not block ${this.target}.`),
+      next: (ack) => this.ok(`Blocked ${this.targetLabel()} (${this.blockPlatform}). External push: ${ack.external}.`),
+      error: () => this.fail(`Could not block ${this.targetLabel()}.`),
     });
   }
 
@@ -137,8 +157,8 @@ export class RoleActionsComponent implements OnInit, OnDestroy {
   unblock(b: UserBlock): void {
     this.clearMessages();
     this.userBff.unblock(b.id).subscribe({
-      next: () => this.ok(`Removed block on ${b.target}.`),
-      error: () => this.fail(`Could not remove the block on ${b.target}.`),
+      next: () => this.ok(`Removed block on ${this.idLabel(b.target)}.`),
+      error: () => this.fail(`Could not remove the block on ${this.idLabel(b.target)}.`),
     });
   }
 

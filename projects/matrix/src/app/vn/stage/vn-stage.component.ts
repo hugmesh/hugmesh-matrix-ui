@@ -4,6 +4,7 @@ import { SceneService } from '../scenes/scene.service';
 import { MAX_PROPS, VnPlacedProp } from '../scenes/vn-scene-state.service';
 import { MouthOverlayComponent } from './mouth-overlay.component';
 import { accessibleName } from '../../accessible-name';
+import { displayLabel } from '../../display-label';
 
 /**
  * One character on the stage. `imgUrl` is whatever the caller resolved for the
@@ -150,13 +151,13 @@ export class VnStageComponent {
 
   /** Meaningful sprite alt, matching hug-character-panel's convention. */
   alt(p: StageParticipant): string {
-    const name = accessibleName(p.displayName || p.userId || 'Participant', p.screenReaderName ?? null);
+    const name = accessibleName(displayLabel(p.userId, p.displayName) || 'Participant', p.screenReaderName ?? null);
     return p.expression ? `${name} character, ${p.expression}` : `${name} character`;
   }
 
-  /** Visible name-plate text (display name, falling back to the Matrix id). */
+  /** Visible name-plate text (display name, falling back to the localpart). */
   plateName(p: StageParticipant): string {
-    return p.displayName || p.userId;
+    return displayLabel(p.userId, p.displayName);
   }
 
   trackSprite(_i: number, row: SpriteRow): string {

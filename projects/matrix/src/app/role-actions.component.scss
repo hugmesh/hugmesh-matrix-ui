@@ -160,6 +160,14 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+
+  .full-id {
+    display: block;
+    font-size: 11px;
+    opacity: 0.75;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 }
 
 .b-platform,

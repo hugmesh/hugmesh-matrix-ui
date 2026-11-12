@@ -7,6 +7,7 @@ import {
 } from './matrix.service';
 import { RoleActionsComponent } from './role-actions.component';
 import { accessibleName } from './accessible-name';
+import { displayLabel } from './display-label';
 import { mountRoute } from './mount-route';
 
 /**
@@ -117,7 +118,12 @@ export class MemberListComponent implements OnInit, OnDestroy, OnChanges {
    *  screenReaderName when present, else the display name / user id. The visible
    *  `.name` span keeps the raw UTF-8 display name. */
   ariaName(m: RoomMember): string {
-    return accessibleName(m.displayName || m.userId, m.screenReaderName);
+    return accessibleName(this.label(m), m.screenReaderName);
+  }
+
+  /** VISIBLE member name: display name, else localpart — never the full mxid. */
+  label(m: RoomMember): string {
+    return displayLabel(m.userId, m.displayName);
   }
 
   powerLabel(level: number): string {

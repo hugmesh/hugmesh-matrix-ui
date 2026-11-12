@@ -2,7 +2,8 @@ import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { MatrixService, SearchResult } from './matrix.service';
+import { MatrixService, SearchResult, TimelineEvent } from './matrix.service';
+import { displayLabel } from './display-label';
 import { mountRoute } from './mount-route';
 
 /**
@@ -46,5 +47,13 @@ export class SearchComponent implements OnInit {
     else this.results.update((cur) => [...cur, ...res.results]);
     this.count.set(res.count);
     this.nextBatch.set(res.nextBatch);
+    // Search hits carry no display name: look the senders up (fail-soft).
+    const ids = res.results.filter((r) => !r.event.senderDisplayName).map((r) => r.event.sender);
+    if (ids.length) void this.matrix.resolveDisplayNames?.(ids)?.catch(() => undefined);
+  }
+
+  /** VISIBLE author name: display name, else localpart — never the full mxid. */
+  senderLabel(e: TimelineEvent): string {
+    return displayLabel(e.sender, e.senderDisplayName || this.matrix.displayNameOf?.(e.sender));
   }
 }

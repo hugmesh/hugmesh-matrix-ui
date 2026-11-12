@@ -10,6 +10,8 @@ const REPLY: TimelineEvent = { eventId: '$reply', roomId: '!r:test', type: 'm.ro
 class MatrixServiceStub {
   getEvent = jasmine.createSpy('getEvent').and.resolveTo(ROOT);
   getRelations = jasmine.createSpy('getRelations').and.resolveTo([REPLY]);
+  resolveDisplayNames = jasmine.createSpy('resolveDisplayNames').and.resolveTo(undefined);
+  displayNameOf = (id: string): string | undefined => (id === '@a:test' ? 'Ana' : undefined);
   getThreads = jasmine.createSpy('getThreads').and.resolveTo({ events: [ROOT], start: '', end: '' });
   setTyping = jasmine.createSpy('setTyping').and.resolveTo(undefined);
 }
@@ -46,6 +48,18 @@ describe('ThreadPanelComponent', () => {
     expect(matrix.getRelations).toHaveBeenCalledWith('!r:test', '$root', 'm.thread');
     expect(component.root()?.eventId).toBe('$root');
     expect(component.replies().map((e) => e.eventId)).toEqual(['$reply']);
+  });
+
+  it('names thread authors by display name (looked up via the service), else localpart — never the bare mxid', () => {
+    expect(matrix.resolveDisplayNames).toHaveBeenCalled();
+    const looked = matrix.resolveDisplayNames.calls.allArgs().flatMap((a: any[]) => [...a[0]]);
+    expect(looked).toContain('@a:test');
+    expect(looked).toContain('@b:test');
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('[data-testid="thread-root"] strong')?.textContent?.trim()).toBe('Ana');
+    expect(el.querySelector('[data-testid="thread-reply-$reply"] strong')?.textContent?.trim()).toBe('b:');
+    expect(el.textContent).not.toContain('@a:test');
+    expect(el.textContent).not.toContain('@b:test');
   });
 
   it('renders the replies list as a labelled live region', () => {

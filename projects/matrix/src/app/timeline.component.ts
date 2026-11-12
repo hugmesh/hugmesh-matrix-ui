@@ -5,6 +5,7 @@ import { MESH_SENDER_PATTERN, MatrixService, Paginated, Reaction, ReadReceiptMap
 import { SessionService } from './session.service';
 import { ReactionPickerComponent } from './reaction-picker.component';
 import { accessibleName } from './accessible-name';
+import { displayLabel } from './display-label';
 import { mountRoute } from './mount-route';
 
 interface TimelineRow {
@@ -131,7 +132,7 @@ export class TimelineComponent implements OnChanges {
    *  bare user id otherwise. */
   private receiptChip(userId: string): ReceiptChip {
     const m = this.memberList().find((x) => x.userId === userId);
-    const name = m?.displayName || userId;
+    const name = displayLabel(userId, m?.displayName);
     return {
       userId,
       name,
@@ -277,9 +278,10 @@ export class TimelineComponent implements OnChanges {
 
   /** VISIBLE author name — the (possibly non-ASCII) display name as-is: the
    *  event's own senderDisplayName when a caller populated it, else the joined
-   *  roster's display name, else the bare mxid (unknown/departed sender). */
+   *  roster's display name, else the sender's localpart (unknown/departed
+   *  sender) — never the full `@local:server` (see {@link displayLabel}). */
   senderName(e: TimelineEvent): string {
-    return e.senderDisplayName || this.memberOf(e.sender)?.displayName || e.sender;
+    return displayLabel(e.sender, e.senderDisplayName || this.memberOf(e.sender)?.displayName);
   }
 
   /** ANNOUNCED author name for aria-label/alt — the ASCII screenReaderName when

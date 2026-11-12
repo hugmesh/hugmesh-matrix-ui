@@ -7,7 +7,7 @@
 
   <div class="topbar">
     <h2>Matrix</h2>
-    <p data-testid="matrix-whoami" *ngIf="userId() as id">Signed in as {{ id }}</p>
+    <p data-testid="matrix-whoami" *ngIf="userId() as id" [attr.title]="id">Signed in as <strong>{{ signedInLabel() }}</strong></p>
     <!-- The section links all lead to Matrix views that cannot work for an
          account refused Matrix, so they are withdrawn once access is refused. -->
     <ng-container *ngIf="access() !== 'denied'">

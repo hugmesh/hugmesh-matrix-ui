@@ -5,6 +5,7 @@ import { MatrixService, TimelineEvent } from './matrix.service';
 import { ComposerComponent } from './composer.component';
 import { ChatThemeRootDirective } from './theme/chat-theme-root.directive';
 import { mountRoute } from './mount-route';
+import { displayLabel } from './display-label';
 
 /**
  * Element Web ThreadView / ThreadPanel. Shows a thread root + its m.thread
@@ -59,8 +60,21 @@ export class ThreadPanelComponent implements OnInit, OnDestroy {
     return r.length ? r[r.length - 1].eventId : this.rootId();
   }
 
+  /** VISIBLE author name: the event's display name, else one the service has
+   *  seen for the sender, else the sender's localpart — never the full mxid. */
+  senderLabel(e: TimelineEvent): string {
+    return displayLabel(e.sender, e.senderDisplayName || this.matrix.displayNameOf?.(e.sender));
+  }
+
+  /** Thread events carry no display name: look the senders up (fail-soft). */
+  private resolveSenders(events: (TimelineEvent | null)[]): void {
+    const ids = events.filter((e): e is TimelineEvent => !!e && !e.senderDisplayName).map((e) => e.sender);
+    if (ids.length) void this.matrix.resolveDisplayNames?.(ids)?.catch(() => undefined);
+  }
+
   private async loadRoot(rid: string, eid: string): Promise<void> {
     try { this.root.set(await this.matrix.getEvent(rid, eid)); } catch { this.root.set(null); }
+    this.resolveSenders([this.root()]);
   }
 
   async reloadReplies(): Promise<void> {
@@ -69,10 +83,12 @@ export class ThreadPanelComponent implements OnInit, OnDestroy {
     if (!rid || !eid) return;
     const evs = await this.matrix.getRelations(rid, eid, 'm.thread');
     this.replies.set(evs.sort((a, b) => a.originServerTs - b.originServerTs));
+    this.resolveSenders(evs);
   }
 
   private async loadThreadList(rid: string): Promise<void> {
     const page = await this.matrix.getThreads(rid);
     this.threadRoots.set(page.events);
+    this.resolveSenders(page.events);
   }
 }

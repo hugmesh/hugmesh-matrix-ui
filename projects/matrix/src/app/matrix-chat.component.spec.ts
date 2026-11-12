@@ -72,9 +72,19 @@ describe('MatrixChatComponent (3-pane shell)', () => {
     expect(nav.getAttribute('aria-label')).toBeTruthy();
   });
 
-  it('shows the signed-in user id in the topbar', () => {
+  it('NAMES the signed-in user in the topbar (localpart when no display name is known), full mxid on the title', () => {
     const whoami = fixture.nativeElement.querySelector('[data-testid="matrix-whoami"]');
-    expect(whoami.textContent).toContain('@me:test');
+    expect(whoami.textContent.trim()).toBe('Signed in as me');
+    expect(whoami.getAttribute('title')).toBe('@me:test');
+  });
+
+  it('shows the signed-in user\'s DISPLAY NAME once the service knows it', () => {
+    (matrix as any).displayNameOf = (id: string) => (id === '@me:test' ? 'e2e-matrix' : undefined);
+    component.userId.set(null);
+    component.userId.set('@me:test');
+    fixture.detectChanges();
+    const whoami = fixture.nativeElement.querySelector('[data-testid="matrix-whoami"]');
+    expect(whoami.textContent.trim()).toBe('Signed in as e2e-matrix');
   });
 
   it('updates the current room on selection', () => {
