@@ -28,3 +28,19 @@
     min-width:44px;min-height:44px;border-radius:8px;
   }
 }
+
+// NOT A MEMBER / NO MATRIX ACCESS notices. Colours INHERIT the host theme so the
+// copy keeps the page's own contrast in dark and light; the border and the
+// bold first line mark the notice without relying on colour.
+.not-member,.access-denied{margin:16px 8px;padding:12px 16px;border:1px solid currentColor;border-left-width:4px;border-radius:8px;max-width:40rem}
+.not-member p,.access-denied p{margin:0}
+.not-member .not-member-title,.access-denied .access-title{font-weight:700;margin-bottom:6px}
+.not-member .join{margin:6px 0;min-height:36px;padding:0 16px;font-weight:600;cursor:pointer}
+.not-member .join[disabled]{cursor:progress;opacity:.7}
+.not-member .field-help{font-size:13px}
+.not-member .join-status{margin-top:6px}
+// Touch target: the Join button grows to the 44px minimum on phones / coarse pointers
+// (after the base rule above, so it wins at equal specificity).
+@media (max-width: t.$bp-md), (pointer: coarse) {
+  .not-member .join{min-height:44px}
+}

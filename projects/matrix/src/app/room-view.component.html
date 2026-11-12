@@ -1,12 +1,21 @@
 <section class="room-view" data-testid="room-view" *ngIf="roomId() as rid"
-         [attr.aria-label]="(summary()?.name || rid) + ' room'">
+         [attr.aria-label]="roomTitle(rid) + ' room'">
+  <!-- NO MATRIX ACCESS: the platform refused Matrix to this account (the role
+       gate's 403, or a 403 sync) — nothing in a room can work, so say why. -->
+  <div *ngIf="access() === 'denied'; else roomUi" class="access-denied" data-testid="matrix-access-denied"
+       role="alert">
+    <p class="access-title">Matrix is not available to you</p>
+    <p>{{ accessDeniedCopy }}</p>
+  </div>
+  <ng-template #roomUi>
   <header class="room-header" data-testid="room-header">
     <span class="avatar" aria-hidden="true" [style.background-image]="avatarBg()"></span>
     <div class="meta">
-      <h3 data-testid="room-name">{{ summary()?.name || rid }}</h3>
-      <p data-testid="room-topic" class="topic">{{ summary()?.topic }}</p>
+      <h3 data-testid="room-name">{{ roomTitle(rid) }}</h3>
+      <p data-testid="room-topic" class="topic">{{ summary()?.topic ?? preview()?.topic }}</p>
     </div>
-    <span class="member-count">{{ memberCount() }} members</span>
+    <span *ngIf="headerMemberCount() !== null" class="member-count"
+          data-testid="room-member-count">{{ headerMemberCount() }} members</span>
     <nav class="header-actions" aria-label="Room actions">
       <!-- Embedded calls: both land on the existing /call route with ?room=;
            mode=vn-voice renders the audio-only VN stage, mode=video the
@@ -39,6 +48,28 @@
     </nav>
   </header>
 
+  <!-- NOT A MEMBER: the homeserver refused this room's state / roster. Said in
+       words instead of an empty timeline and "0 members", with Join on offer
+       only for a PUBLIC room (anything else the homeserver would refuse). -->
+  <div *ngIf="access() === 'not-member'; else memberUi" class="not-member" data-testid="room-not-member"
+       role="status">
+    <p class="not-member-title">You are not a member of this room.</p>
+    <ng-container *ngIf="canJoin(); else askInvite">
+      <button type="button" class="join" data-testid="btn-join-room" [disabled]="joining()"
+              aria-describedby="room-join-help" (click)="join()">{{ joining() ? 'Joining…' : 'Join room' }}</button>
+      <p id="room-join-help" class="field-help" data-testid="room-join-help">
+        This room is public. Joining adds it to your room list so you can read and send messages.
+      </p>
+    </ng-container>
+    <ng-template #askInvite>
+      <p class="field-help" data-testid="room-invite-help">
+        This room is not open to join. Ask one of its members to invite you.
+      </p>
+    </ng-template>
+    <p *ngIf="joinStatus()" class="join-status" role="alert" data-testid="room-join-status">{{ joinStatus() }}</p>
+  </div>
+
+  <ng-template #memberUi>
   <!-- Timeline + an OPTIONAL live VN character beside it (B2, Path A). The panel
        resolves the latest sender's sticker pack fail-soft and renders NOTHING
        when there is none — so this row never breaks an ordinary room. -->
@@ -61,4 +92,6 @@
 
   <hug-composer [roomId]="rid" [target]="composerTarget()" [mode]="composerMode"
                  (sent)="onSent()" (modeReset)="onModeReset()"></hug-composer>
+  </ng-template>
+  </ng-template>
 </section>

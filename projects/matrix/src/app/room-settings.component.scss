@@ -11,3 +11,10 @@ button[disabled]{cursor:not-allowed;opacity:.6}
 .mesh-bridge h4{margin:0}
 .check{flex-direction:row;align-items:center;gap:6px}
 #rs-mesh-channel{max-width:80px}
+
+// Refused-state notices: colours INHERIT the host theme (contrast follows the
+// page); border + bold first line mark the notice without relying on colour.
+.access-note{margin:0;padding:10px 12px;border:1px solid currentColor;border-left-width:4px;border-radius:8px;font-size:13px}
+.access-note p{margin:0}
+.access-note .access-title{font-weight:700;margin-bottom:4px}
+input[disabled]{cursor:not-allowed;opacity:.7}

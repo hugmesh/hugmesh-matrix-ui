@@ -11,6 +11,8 @@ const ROOMS: MatrixRoom[] = [
 
 class MatrixServiceStub {
   whoami = jasmine.createSpy('whoami').and.resolveTo('@me:test');
+  // The shell resolves the user AND the account's Matrix access in one call.
+  whoamiAccess = jasmine.createSpy('whoamiAccess').and.resolveTo({ userId: '@me:test', forbidden: null });
   joinedRoomsDetailed = jasmine.createSpy('joinedRoomsDetailed').and.resolveTo(ROOMS);
   // The long-poll loop awaits sync() forever in real life; returning a
   // never-settling promise parks the loop at its first await so the spec

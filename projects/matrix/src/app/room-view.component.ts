@@ -1,7 +1,10 @@
 import { Component, Input, OnChanges, OnDestroy, OnInit, Signal, SimpleChanges, computed, effect, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { MatrixService, ReadReceiptMap, RoomMember, RoomSummary, SyncRoomFeed, TimelineEvent, mergeSyncRoom } from './matrix.service';
+import {
+  MATRIX_ACCESS_DENIED_COPY, MATRIX_ROOM_JOINED_EVENT, MatrixForbiddenError, MatrixService, ReadReceiptMap,
+  RoomMember, RoomPreview, RoomSummary, SyncRoomFeed, TimelineEvent, mergeSyncRoom,
+} from './matrix.service';
 import { TimelineComponent } from './timeline.component';
 import { ComposerComponent } from './composer.component';
 import { HugCharacterPanelComponent } from './vn/hug-character-panel.component';
@@ -91,6 +94,27 @@ export class RoomViewComponent implements OnInit, OnChanges, OnDestroy {
   /** Joined members, kept so the timeline can resolve a read-receipt user id to
    *  a display name + avatar for the "Read by <name>" indicator. */
   readonly members = signal<RoomMember[]>([]);
+
+  /**
+   * Whether the caller may see this room:
+   *  - `ok`: a member (or nothing refused yet);
+   *  - `not-member`: the HOMESERVER refused the room's state / roster
+   *    (M_FORBIDDEN) — the view says so, and offers Join when the room is public;
+   *  - `denied`: the platform refused Matrix to the ACCOUNT (the role gate's
+   *    empty 403, or a 403 sync) — the view says so and stops its own sync loop.
+   * Both refusals used to render as an empty room with "0 members".
+   */
+  readonly access = signal<'ok' | 'not-member' | 'denied'>('ok');
+  readonly accessDeniedCopy = MATRIX_ACCESS_DENIED_COPY;
+  /** What a non-member may see of the room before joining (null when the server
+   *  refuses even that — a private room). */
+  readonly preview = signal<RoomPreview | null>(null);
+  /** Join is offered only when the room is PUBLIC — anything else would be a
+   *  button the homeserver is certain to refuse. */
+  readonly canJoin = computed(() => this.preview()?.joinRule === 'public');
+  readonly joining = signal(false);
+  /** ANNOUNCED outcome of a refused join. */
+  readonly joinStatus = signal('');
 
   /** Whether this room's `net.hugmesh.chat3d` state parses ENABLED —
    *  the 3D-room button renders only then (an off/unset/unreadable state
@@ -248,7 +272,7 @@ export class RoomViewComponent implements OnInit, OnChanges, OnDestroy {
     // `hostFeed()` being null here reliably means "no host". Under the chat
     // shell this is skipped and we keep consuming the shell's single loop, so
     // the two never both sync.
-    if (this.hostFeed() === null) {
+    if (this.hostFeed() === null && this.access() !== 'denied') {
       this.ownLoopRunning = true;
       void this.ownSyncLoop();
     }
@@ -303,6 +327,12 @@ export class RoomViewComponent implements OnInit, OnChanges, OnDestroy {
         // A rejected sync returns INSTANTLY with the empty placeholder, so
         // treating it as an ordinary empty delta would spin the loop.
         if (state.failed) {
+          // A 403 is PERMANENT for this account: stop polling and say why,
+          // rather than retrying it every 2s for as long as the tab is open.
+          if (state.forbidden) {
+            this.denyAccess();
+            return;
+          }
           await new Promise((res) => setTimeout(res, RoomViewComponent.SYNC_BACKOFF_MS));
           continue;
         }
@@ -326,13 +356,21 @@ export class RoomViewComponent implements OnInit, OnChanges, OnDestroy {
     // identities. Each write is guarded after ITS await (any await is a seam
     // a newer load can slip through).
     this.roomId.set(id);
+    // A room switch starts from "may see it"; the previous room's refusal,
+    // preview and join outcome never carry over to the next one.
+    if (this.access() !== 'denied') this.access.set('ok');
+    this.preview.set(null);
+    this.joinStatus.set('');
     try {
       const summary = await this.matrix.roomSummary(id);
       if (this.roomId() !== id) return;
       this.summary.set(summary);
-    } catch {
+    } catch (e) {
       if (this.roomId() !== id) return;
       this.summary.set(null);
+      // A 403 on the room's state is a REFUSAL, not an empty room — and the
+      // roster call below would only be refused the same way.
+      if (e instanceof MatrixForbiddenError) return this.refuse(id, e);
     }
     try {
       const members = await this.matrix.joinedMembers(id);
@@ -341,7 +379,10 @@ export class RoomViewComponent implements OnInit, OnChanges, OnDestroy {
       // Keep the roster so the timeline can name a read-receipt author
       // ("Read by <name>") and render their avatar rather than a bare user id.
       this.members.set(members);
-    } catch { /* ignore */ }
+    } catch (e) {
+      if (this.roomId() !== id) return;
+      if (e instanceof MatrixForbiddenError) return this.refuse(id, e);
+    }
     // Fail-soft: the service resolves null on unset/denied/malformed — the
     // 3D-room button just stays hidden.
     const chat3d = await this.chat3d.getChat3dState(id);
@@ -349,8 +390,67 @@ export class RoomViewComponent implements OnInit, OnChanges, OnDestroy {
     this.chat3dEnabled.set(chat3d?.enabled === true);
   }
 
+  /** The room's state or roster was refused (403). With no Matrix errcode the
+   *  role gate refused the ACCOUNT; with one, the homeserver refused this ROOM
+   *  to a non-member — then fetch what a non-member may see, to name the room
+   *  and decide whether Join is on offer. */
+  private async refuse(id: string, err: MatrixForbiddenError): Promise<void> {
+    this.memberCount.set(0);
+    this.members.set([]);
+    if (err.accountLevel) {
+      this.denyAccess();
+      return;
+    }
+    this.access.set('not-member');
+    const preview = await this.matrix.roomPreview(id).catch(() => null);
+    if (this.roomId() !== id) return;
+    this.preview.set(preview);
+  }
+
+  /** The account is refused Matrix: stop this view's own sync loop for good. */
+  private denyAccess(): void {
+    this.ownLoopRunning = false;
+    this.access.set('denied');
+  }
+
+  /** Join the (public) room the caller is not a member of, then load it as a
+   *  member. A refusal is ANNOUNCED and leaves the prompt in place. */
+  async join(): Promise<void> {
+    const id = this.roomId();
+    if (!id || this.joining()) return;
+    this.joining.set(true);
+    this.joinStatus.set('');
+    try {
+      await this.matrix.joinRoom(id);
+      if (this.roomId() !== id) return;
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(MATRIX_ROOM_JOINED_EVENT, { detail: { roomId: id } }));
+      }
+      await this.load(id);
+    } catch (e: unknown) {
+      if (this.roomId() !== id) return;
+      this.joinStatus.set(`Could not join this room: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      this.joining.set(false);
+    }
+  }
+
+  /** The member count the header shows: the roster when we are a member, the
+   *  room summary's count when we are not (null hides it — never a false 0). */
+  headerMemberCount(): number | null {
+    if (this.access() === 'ok') return this.memberCount();
+    return this.preview()?.numJoinedMembers ?? null;
+  }
+
+  /** The header title: the room's name, else (for a non-member) the summary's
+   *  name or alias, else the raw id. */
+  roomTitle(rid: string): string {
+    const p = this.preview();
+    return this.summary()?.name || p?.name || p?.canonicalAlias || rid;
+  }
+
   avatarBg(): string {
-    const url = this.summary()?.avatarUrl;
+    const url = this.summary()?.avatarUrl ?? this.preview()?.avatarUrl;
     return url ? `url(${this.matrix.mxcToHttp(url, { thumbnail: true, w: 36, h: 36 })})` : '';
   }
 

@@ -287,6 +287,75 @@ export interface RoomSummary {
   };
 }
 
+/**
+ * A 403 on the CS-API path. Two different refusals share that status, and the
+ * UI must not confuse them:
+ *
+ *  - the platform ROLE GATE (the BFF / gateway route access) refuses the whole
+ *    Matrix surface to an account without the matrix role. The body is EMPTY —
+ *    no Matrix `errcode` — because the homeserver never saw the request;
+ *  - the HOMESERVER refuses one room to a caller who is not a member of it
+ *    (`{"errcode":"M_FORBIDDEN",...}` on /state and /joined_members).
+ *
+ * Both used to be swallowed into an ordinary empty result — an empty client
+ * with no explanation, "0 members", a sync loop retrying the refusal every 2s
+ * forever. {@link accountLevel} tells them apart, so a room view never offers a
+ * Join button to an account that cannot use Matrix at all.
+ */
+export class MatrixForbiddenError extends Error {
+  override readonly name = 'MatrixForbiddenError';
+  readonly status = 403;
+
+  constructor(
+    /** Which CS-API call was refused (`whoami`, `sync`, `state`, `joined_members`). */
+    readonly endpoint: string,
+    /** The Matrix `errcode` from the body; null when there was none (the role gate). */
+    readonly errcode: string | null,
+  ) {
+    super(`${endpoint} forbidden: 403${errcode ? ` ${errcode}` : ''}`);
+  }
+
+  /** True when the refusal carried no Matrix errcode: the BFF/gateway turned the
+   *  request away before the homeserver saw it, so the ACCOUNT has no Matrix
+   *  access — not just this one room. */
+  get accountLevel(): boolean {
+    return this.errcode === null;
+  }
+}
+
+/** The account-level copy every view shows when Matrix is refused outright. */
+export const MATRIX_ACCESS_DENIED_COPY = 'Your account does not have Matrix access — ask an administrator.';
+
+/** Dispatched on `window` (remote-internal, not a host-shell contract) after
+ *  this client joins a room, so sibling panes showing that room (the members
+ *  pane beside the room view) re-read it. `detail` is `{ roomId }`. */
+export const MATRIX_ROOM_JOINED_EVENT = 'hug-matrix:room-joined';
+
+/** {@link MatrixService.whoamiAccess}: the caller's Matrix id, or the refusal
+ *  that says the account has no Matrix access at all. */
+export interface WhoamiResult {
+  userId: string | null;
+  /** Set on a 403 — the account is refused Matrix (any errcode, or none). */
+  forbidden: MatrixForbiddenError | null;
+}
+
+/** What a NON-MEMBER may learn about a room before joining it — the room
+ *  summary (Matrix v1.15 `room_summary`, MSC3266). A homeserver only answers it
+ *  for rooms that are public, world-readable or otherwise joinable by the
+ *  caller; a private room refuses it outright. */
+export interface RoomPreview {
+  roomId: string;
+  name?: string;
+  topic?: string;
+  canonicalAlias?: string;
+  avatarUrl?: string;
+  /** `public`, `invite`, `knock`, `restricted`, ... — see {@link MatrixService.roomPreview}. */
+  joinRule: string;
+  numJoinedMembers?: number;
+  /** The caller's own membership (`leave`, `invite`, `ban`, ...), when the server says. */
+  membership?: string;
+}
+
 /** A room the caller has a PENDING INVITE to, parsed from /sync `rooms.invite`
  *  invite_state (name/avatar when the stripped state carries them, plus the
  *  inviting user off the m.room.member invite event). */
@@ -306,6 +375,13 @@ export interface SyncState {
    *  hammers the BFF continuously for as long as the tab stays open. Absent
    *  (undefined) on every successful sync. */
   failed?: boolean;
+  /** The HTTP status of a {@link failed} sync (absent on success). */
+  status?: number;
+  /** Set when a {@link failed} sync was a 403: the account is refused Matrix.
+   *  That refusal is PERMANENT for the session — a long-poll loop must STOP on
+   *  it, not back off and retry it every couple of seconds for the life of the
+   *  tab. 401 / 5xx / network errors leave this unset and keep the back-off. */
+  forbidden?: MatrixForbiddenError;
   nextBatch: string;
   rooms: Record<string, {
     timeline: TimelineEvent[];
@@ -563,11 +639,33 @@ export class MatrixService {
 
   // ─────────────────────────── Identity / sync ───────────────────────────
 
-  /** Resolve the logged-in user_id from the Bearer token. */
+  /** Resolve the logged-in user_id (null on any refusal — fail-soft for the many
+   *  callers that only garnish a view with it). */
   async whoami(): Promise<string | null> {
+    return (await this.whoamiAccess()).userId;
+  }
+
+  /** {@link whoami}, but keeping the one refusal a view must act on: a 403 means
+   *  the ACCOUNT has no Matrix access (the role gate, or the homeserver refusing
+   *  the account), and the client should say so instead of rendering empty. */
+  async whoamiAccess(): Promise<WhoamiResult> {
     const r = await this.hsFetch(`${this.baseUrl}/_matrix/client/v3/account/whoami`, { headers: this.headers() });
-    if (!r.ok) return null;
-    return (await r.json()).user_id ?? null;
+    if (r.status === 403) return { userId: null, forbidden: await this.forbidden('whoami', r) };
+    if (!r.ok) return { userId: null, forbidden: null };
+    return { userId: (await r.json()).user_id ?? null, forbidden: null };
+  }
+
+  /** Build the {@link MatrixForbiddenError} for a 403, reading the Matrix
+   *  `errcode` when the body carries one. Never throws: the role gate's 403 has
+   *  an EMPTY body (no content type), which `r.json()` would reject. */
+  private async forbidden(endpoint: string, r: Response): Promise<MatrixForbiddenError> {
+    let errcode: string | null = null;
+    try {
+      const text = await r.text();
+      const body = text ? JSON.parse(text) : null;
+      if (body && typeof body.errcode === 'string' && body.errcode) errcode = body.errcode;
+    } catch { /* empty or non-JSON body: no Matrix errcode */ }
+    return new MatrixForbiddenError(endpoint, errcode);
   }
 
   /** Long-poll incremental sync: room list, timelines, ephemeral typing/receipts,
@@ -578,8 +676,14 @@ export class MatrixService {
     qs.set('timeout', String(timeoutMs));
     if (filter) qs.set('filter', filter);
     const r = await this.hsFetch(`${this.baseUrl}/_matrix/client/v3/sync?${qs.toString()}`, { headers: this.headers() });
-    const empty: SyncState = { failed: true, nextBatch: since ?? '', rooms: {}, invites: {}, accountData: {}, presence: {} };
-    if (!r.ok) return empty;
+    if (!r.ok) {
+      return {
+        failed: true,
+        status: r.status,
+        forbidden: r.status === 403 ? await this.forbidden('sync', r) : undefined,
+        nextBatch: since ?? '', rooms: {}, invites: {}, accountData: {}, presence: {},
+      };
+    }
     const data = await r.json();
     const out: SyncState = {
       nextBatch: data.next_batch ?? since ?? '',
@@ -749,9 +853,49 @@ export class MatrixService {
   }
 
   /** Derive name/topic/avatar/canonical_alias/join_rule/power_levels from a
-   *  single full-state fetch. */
+   *  single full-state fetch. THROWS {@link MatrixForbiddenError} on a 403 —
+   *  the room views render a "not a member" / "no Matrix access" state from it
+   *  instead of an empty room. */
   async roomSummary(roomId: string): Promise<RoomSummary> {
-    return this.summaryFromState(await this.roomState(roomId));
+    return this.summaryFromState(await this.fetchRoomState(roomId));
+  }
+
+  /**
+   * The room summary a NON-MEMBER may see (Matrix v1.15
+   * `GET /_matrix/client/v1/room_summary/{roomIdOrAlias}`, falling back to the
+   * MSC3266 unstable path on a 404 from an older homeserver). Fail-soft: null
+   * when the server refuses it (a private room) or answers nothing usable.
+   *
+   * `join_rule` ABSENT means `public`: the summary extends the spec's
+   * PublicRoomsChunk ("when not present, the room is assumed to be public"),
+   * and ruma-based servers (tuwunel) skip-serialize that default — a public
+   * room's summary carries no `join_rule` key at all, while an invite-only
+   * room's summary is refused to a non-member outright.
+   */
+  async roomPreview(roomIdOrAlias: string): Promise<RoomPreview | null> {
+    try {
+      const id = this.enc(roomIdOrAlias);
+      let r = await this.hsFetch(`${this.baseUrl}/_matrix/client/v1/room_summary/${id}`, { headers: this.headers() });
+      if (r.status === 404) {
+        r = await this.hsFetch(`${this.baseUrl}/_matrix/client/unstable/im.nheko.summary/rooms/${id}/summary`, { headers: this.headers() });
+      }
+      if (!r.ok) return null;
+      const d = await r.json();
+      if (!d || typeof d.room_id !== 'string') return null;
+      const str = (v: unknown): string | undefined => (typeof v === 'string' && v ? v : undefined);
+      return {
+        roomId: d.room_id,
+        name: str(d.name),
+        topic: str(d.topic),
+        canonicalAlias: str(d.canonical_alias),
+        avatarUrl: str(d.avatar_url),
+        joinRule: str(d.join_rule) ?? 'public',
+        numJoinedMembers: typeof d.num_joined_members === 'number' ? d.num_joined_members : undefined,
+        membership: str(d.membership),
+      };
+    } catch {
+      return null;
+    }
   }
 
   /** Derive a {@link RoomSummary} from an ALREADY-FETCHED full room state.
@@ -791,9 +935,22 @@ export class MatrixService {
     return summary;
   }
 
-  /** Fetch the full current state of a room (array of state events). */
+  /** Fetch the full current state of a room (array of state events). Fail-soft
+   *  `[]` on any refusal — the chat3d / VN / room-list callers only garnish a
+   *  view with it. {@link roomSummary} is the call that surfaces a 403. */
   async roomState(roomId: string): Promise<TimelineEvent[]> {
+    try {
+      return await this.fetchRoomState(roomId);
+    } catch (e) {
+      if (e instanceof MatrixForbiddenError) return [];
+      throw e;
+    }
+  }
+
+  /** {@link roomState}, but THROWING {@link MatrixForbiddenError} on a 403. */
+  private async fetchRoomState(roomId: string): Promise<TimelineEvent[]> {
     const r = await this.hsFetch(`${this.baseUrl}/_matrix/client/v3/rooms/${this.enc(roomId)}/state`, { headers: this.headers() });
+    if (r.status === 403) throw await this.forbidden('state', r);
     if (!r.ok) return [];
     const arr: any[] = await r.json();
     return (arr ?? []).map((e) => {
@@ -891,9 +1048,13 @@ export class MatrixService {
     if (!r.ok) throw new Error(`kick failed: ${r.status}`);
   }
 
-  /** Member list: joined members merged with optional power levels. */
+  /** Member list: joined members merged with optional power levels. THROWS
+   *  {@link MatrixForbiddenError} on a 403 (a non-member, or no Matrix access) —
+   *  swallowing it into `[]` rendered a public room as "Members (0)". Other
+   *  failures stay fail-soft `[]`. */
   async joinedMembers(roomId: string): Promise<RoomMember[]> {
     const r = await this.hsFetch(`${this.baseUrl}/_matrix/client/v3/rooms/${this.enc(roomId)}/joined_members`, { headers: this.headers() });
+    if (r.status === 403) throw await this.forbidden('joined_members', r);
     if (!r.ok) return [];
     const joined = (await r.json()).joined ?? {};
     let powerUsers: Record<string, number> = {};

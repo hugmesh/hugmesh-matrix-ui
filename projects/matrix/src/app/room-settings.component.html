@@ -4,29 +4,45 @@
     <a [routerLink]="['rooms', roomId()]" [relativeTo]="mount"><span aria-hidden="true">←</span> Back</a>
   </header>
 
+  <!-- NO MATRIX ACCESS: the platform refused Matrix to this account; there is
+       no room to configure. -->
+  <div *ngIf="access() === 'denied'; else settingsForm" class="access-note" data-testid="matrix-access-denied"
+       role="alert">
+    <p class="access-title">Matrix is not available to you</p>
+    <p>{{ accessDeniedCopy }}</p>
+  </div>
+
+  <ng-template #settingsForm>
+  <!-- NOT A MEMBER: the room's state was refused, so every control below is
+       READ-ONLY, each disabled control described by this note (never bare). -->
+  <p *ngIf="readOnly()" id="rs-readonly-help" class="access-note readonly-note"
+     data-testid="room-settings-not-member" role="status">{{ readOnlyHelp }}</p>
+
   <label for="rs-name">Name
-    <input id="rs-name" data-testid="input-room-name" [(ngModel)]="name"
-           aria-describedby="rs-name-help" />
+    <input id="rs-name" data-testid="input-room-name" [(ngModel)]="name" [disabled]="readOnly()"
+           [attr.aria-describedby]="describedBy('rs-name-help', readOnly() && 'rs-readonly-help')" />
   </label>
   <p id="rs-name-help" class="field-help" data-testid="rs-name-help">
     The room's display name, shown to every member in their room list.
   </p>
   <label for="rs-topic">Topic
-    <input id="rs-topic" data-testid="input-room-topic" [(ngModel)]="topic"
-           aria-describedby="rs-topic-help" />
+    <input id="rs-topic" data-testid="input-room-topic" [(ngModel)]="topic" [disabled]="readOnly()"
+           [attr.aria-describedby]="describedBy('rs-topic-help', readOnly() && 'rs-readonly-help')" />
   </label>
   <p id="rs-topic-help" class="field-help" data-testid="rs-topic-help">
     A short description of what the room is for, shown in the room header.
   </p>
   <label for="rs-avatar">Avatar
-    <input id="rs-avatar" type="file" data-testid="input-room-avatar" accept="image/*"
-           aria-describedby="rs-avatar-help" (change)="onAvatar($event)" />
+    <input id="rs-avatar" type="file" data-testid="input-room-avatar" accept="image/*" [disabled]="readOnly()"
+           [attr.aria-describedby]="describedBy('rs-avatar-help', readOnly() && 'rs-readonly-help')"
+           (change)="onAvatar($event)" />
   </label>
   <p id="rs-avatar-help" class="field-help" data-testid="rs-avatar-help">
     Pick an image to represent the room. It is uploaded immediately, but only applied when you Save.
   </p>
   <button type="button" data-testid="btn-save-room"
-          aria-describedby="rs-save-help" (click)="save()" [disabled]="busy()">Save</button>
+          [attr.aria-describedby]="describedBy('rs-save-help', readOnly() && 'rs-readonly-help')"
+          (click)="save()" [disabled]="busy() || readOnly()">Save</button>
   <p id="rs-save-help" class="field-help" data-testid="rs-save-help">
     Applies the name, topic and avatar changes above for everyone in the room.
   </p>
@@ -43,11 +59,12 @@
   </p>
   <label for="rs-invite">Invite user
     <input id="rs-invite" data-testid="input-invite" [(ngModel)]="inviteUser" placeholder="@user:server"
-           [attr.aria-describedby]="domainLocked() ? 'rs-invite-help' : null" />
+           [disabled]="readOnly()"
+           [attr.aria-describedby]="describedBy(domainLocked() && 'rs-invite-help', readOnly() && 'rs-readonly-help')" />
   </label>
   <button type="button" data-testid="btn-room-invite"
-          [disabled]="inviteBlocked()"
-          [attr.aria-describedby]="domainLocked() ? 'rs-invite-help' : null"
+          [disabled]="inviteBlocked() || readOnly()"
+          [attr.aria-describedby]="describedBy(domainLocked() && 'rs-invite-help', readOnly() && 'rs-readonly-help')"
           (click)="doInvite()">Invite</button>
   <p *ngIf="domainLocked()" id="rs-invite-help" class="field-help" data-testid="invite-help">{{ inviteHelp }}</p>
 
@@ -176,12 +193,14 @@
   </section>
 
   <hr />
-  <button type="button" class="leave" data-testid="btn-leave-room"
-          aria-describedby="rs-leave-help" (click)="leave()">Leave room</button>
+  <button type="button" class="leave" data-testid="btn-leave-room" [disabled]="readOnly()"
+          [attr.aria-describedby]="describedBy('rs-leave-help', readOnly() && 'rs-readonly-help')"
+          (click)="leave()">Leave room</button>
   <p id="rs-leave-help" class="field-help" data-testid="rs-leave-help">
     Removes you from this room and returns you to your room list. You can rejoin later if the room
     is public or you are invited again.
   </p>
 
   <p *ngIf="status()" class="status" role="status" aria-live="polite" data-testid="room-settings-status">{{ status() }}</p>
+  </ng-template>
 </section>

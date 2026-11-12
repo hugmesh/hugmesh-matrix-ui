@@ -2,7 +2,9 @@ import { Component, Input, OnChanges, OnDestroy, OnInit, SimpleChanges, inject, 
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { MatrixService, RoomMember } from './matrix.service';
+import {
+  MATRIX_ACCESS_DENIED_COPY, MATRIX_ROOM_JOINED_EVENT, MatrixForbiddenError, MatrixService, RoomMember,
+} from './matrix.service';
 import { RoleActionsComponent } from './role-actions.component';
 import { accessibleName } from './accessible-name';
 import { mountRoute } from './mount-route';
@@ -41,6 +43,12 @@ export class MemberListComponent implements OnInit, OnDestroy, OnChanges {
    *  403 insufficient power level, invalid target, homeserver error — must
    *  surface here, never die as a silent no-op refresh. */
   readonly status = signal('');
+  /** Whether the roster may be shown: `not-member` when the homeserver refused
+   *  it (M_FORBIDDEN — the caller is not in the room), `denied` when the
+   *  platform refused Matrix to the account (the role gate's empty 403). Both
+   *  used to render as "Members (0)" beside a live invite box. */
+  readonly access = signal<'ok' | 'not-member' | 'denied'>('ok');
+  readonly accessDeniedCopy = MATRIX_ACCESS_DENIED_COPY;
   inviteUser = '';
 
   private sub?: { unsubscribe(): void };
@@ -55,7 +63,16 @@ export class MemberListComponent implements OnInit, OnDestroy, OnChanges {
       this.roomId.set(rid);
       if (rid) await this.reload(rid);
     });
+    if (typeof window !== 'undefined') {
+      window.addEventListener(MATRIX_ROOM_JOINED_EVENT, this.onRoomJoined);
+    }
   }
+
+  /** The room view beside this pane joined the room: the roster is readable now. */
+  private readonly onRoomJoined = (e: Event): void => {
+    const rid = (e as CustomEvent<{ roomId?: string }>).detail?.roomId;
+    if (rid && rid === this.roomId()) void this.reload(rid);
+  };
 
   /** Re-load when the shell switches rooms. The paramMap subscription above does not
    *  fire for an embedded pane, because the room id arrives as an INPUT rather than in
@@ -69,10 +86,26 @@ export class MemberListComponent implements OnInit, OnDestroy, OnChanges {
 
   ngOnDestroy(): void {
     this.sub?.unsubscribe();
+    if (typeof window !== 'undefined') {
+      window.removeEventListener(MATRIX_ROOM_JOINED_EVENT, this.onRoomJoined);
+    }
   }
 
   private async reload(rid: string): Promise<void> {
-    const members = await this.matrix.joinedMembers(rid);
+    let members: RoomMember[];
+    try {
+      members = await this.matrix.joinedMembers(rid);
+    } catch (e) {
+      if (!(e instanceof MatrixForbiddenError)) throw e;
+      if (this.roomId() !== rid) return;
+      // A REFUSAL, not an empty room: never show "Members (0)" for it.
+      this.members.set([]);
+      this.access.set(e.accountLevel ? 'denied' : 'not-member');
+      return;
+    }
+    // STALE-ROOM GUARD: the shell may have switched rooms while this was in flight.
+    if (this.roomId() !== rid) return;
+    this.access.set('ok');
     this.members.set(members.sort((a, b) => b.powerLevel - a.powerLevel));
   }
 

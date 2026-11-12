@@ -1,8 +1,25 @@
 <section class="member-list" data-testid="member-list" aria-label="Room members">
   <header>
-    <h3>Members ({{ members().length }})</h3>
+    <h3>Members<ng-container *ngIf="access() === 'ok'"> ({{ members().length }})</ng-container></h3>
     <a [routerLink]="['rooms', roomId()]" [relativeTo]="mount"><span aria-hidden="true">←</span> Back</a>
   </header>
+
+  <!-- REFUSED roster: said in words instead of "Members (0)" beside an invite box
+       and an empty list. Not a member → the room view offers Join (public rooms);
+       no Matrix access → nothing here can work for this account. -->
+  <div *ngIf="access() === 'not-member'" class="access-note" data-testid="member-list-not-member" role="status">
+    <p class="access-title">You are not a member of this room.</p>
+    <!-- Beside the room view (the shell's members pane) the Join prompt is already
+         on screen; on the standalone route, point back to it. -->
+    <p>Its member list is visible to members only.<ng-container *ngIf="!roomIdInput">
+      <a [routerLink]="['rooms', roomId()]" [relativeTo]="mount">Open the room</a> to join it if it is public.</ng-container></p>
+  </div>
+  <div *ngIf="access() === 'denied'" class="access-note" data-testid="matrix-access-denied" role="alert">
+    <p class="access-title">Matrix is not available to you</p>
+    <p>{{ accessDeniedCopy }}</p>
+  </div>
+
+  <ng-container *ngIf="access() === 'ok'">
 
   <div class="invite-row">
     <label class="sr" for="member-invite">Invite a user by id</label>
@@ -44,4 +61,5 @@
       <hug-role-actions [target]="m.userId" [isSelf]="m.userId === me()"></hug-role-actions>
     </li>
   </ul>
+  </ng-container>
 </section>
