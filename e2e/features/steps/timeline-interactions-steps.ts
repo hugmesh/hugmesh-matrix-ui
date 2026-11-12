@@ -190,9 +190,11 @@ Then(
     await expect
       .poll(
         async () => {
-          const el = watcher.getByTestId('typing-indicator');
+          // The indicator NAMES typers (display name / localpart); each typer
+          // is addressable by mxid through its typing-user-<mxid> span.
+          const el = watcher.getByTestId(`typing-user-${typerId}`);
           if ((await el.count()) === 0) return '';
-          return el.innerText();
+          return (await el.getAttribute('title')) ?? '';
         },
         {
           timeout: seconds * 1000,

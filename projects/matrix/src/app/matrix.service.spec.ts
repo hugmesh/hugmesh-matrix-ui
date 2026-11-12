@@ -345,6 +345,34 @@ describe('MatrixService (hsproxy — no homeserver token in the browser)', () =>
     expect(service.labelFor('@p:test')).toBe('Profile P');
   });
 
+  it('a profile name wins over room member events in EITHER order, and a bare member event never erases a name', async () => {
+    const syncWith = (content: any) => jsonResponse({ next_batch: 's2', rooms: { join: { '!r:test': {
+      state: { events: [{ type: 'm.room.member', sender: '@u:test', state_key: '@u:test', content }] },
+    } } } });
+    // member event first, then the profile
+    fetchSpy.and.resolveTo(syncWith({ membership: 'join', displayname: 'c18f905c-uuid' }));
+    await service.sync('s1', 0);
+    fetchSpy.and.resolveTo(jsonResponse({ displayname: 'e2e-matrix' }));
+    await service.getProfile('@u:test');
+    expect(service.labelFor('@u:test')).toBe('e2e-matrix');
+    // profile first, then a stale member event and a bare one
+    fetchSpy.and.resolveTo(syncWith({ membership: 'join', displayname: 'stale' }));
+    await service.sync('s2', 0);
+    expect(service.labelFor('@u:test')).toBe('e2e-matrix');
+    fetchSpy.and.resolveTo(syncWith({ membership: 'join' }));
+    await service.sync('s3', 0);
+    expect(service.labelFor('@u:test')).toBe('e2e-matrix');
+    // a member-only name also survives a bare member event
+    fetchSpy.and.resolveTo(syncWith({ membership: 'join', displayname: 'Vee' }));
+    await service.sync('s4', 0);
+    fetchSpy.and.resolveTo(jsonResponse({ next_batch: 's5', rooms: { join: { '!r:test': {
+      state: { events: [{ type: 'm.room.member', sender: '@v:test', state_key: '@v:test', content: { membership: 'join', displayname: 'Vee' } },
+        { type: 'm.room.member', sender: '@v:test', state_key: '@v:test', content: { membership: 'join' } }] },
+    } } } }));
+    await service.sync('s5', 0);
+    expect(service.labelFor('@v:test')).toBe('Vee');
+  });
+
   it('resolveDisplayNames() looks each unknown mxid up ONCE, skips known ids and non-mxids, and is fail-soft', async () => {
     fetchSpy.and.callFake(async (url: string) => {
       if (String(url).includes('/profile/@x:test')) return jsonResponse({ displayname: 'Xavier' });

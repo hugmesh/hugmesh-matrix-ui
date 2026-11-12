@@ -175,7 +175,11 @@ describe('RoomViewComponent', () => {
     const typing = fixture.nativeElement.querySelector('[data-testid="typing-indicator"]');
     expect(typing).toBeTruthy();
     expect(typing.getAttribute('aria-live')).toBe('polite');
-    expect(typing.textContent).toContain('@alice:test');
+    // Named by localpart (no display name known), never the bare mxid; the
+    // id stays addressable per typer for tests and on the title.
+    expect(typing.textContent).toMatch(/alice\s+is typing/);
+    expect(typing.textContent).not.toContain('@alice:test');
+    expect(typing.querySelector('[data-testid="typing-user-@alice:test"]')?.getAttribute('title')).toBe('@alice:test');
   });
 
   it('filters my own id out of the typing users', () => {

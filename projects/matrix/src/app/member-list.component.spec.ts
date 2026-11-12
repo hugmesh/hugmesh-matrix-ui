@@ -49,7 +49,7 @@ describe('MemberListComponent', () => {
     expect(component.members().map((m) => m.userId)).toEqual(['@admin:test', '@bob:test']);
   });
 
-  it('names a member with no display name by LOCALPART, never the full mxid, and hands the label to role-actions', () => {
+  it('names a member with no display name by LOCALPART, never the full mxid, in the row and the kick label', () => {
     const row: HTMLElement = fixture.nativeElement.querySelector('[data-testid="member-@bob:test"]');
     const name = row.querySelector('.name') as HTMLElement;
     expect(name.textContent?.trim()).toBe('bob');

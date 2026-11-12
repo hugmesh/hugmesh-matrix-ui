@@ -87,7 +87,9 @@
 
   <p *ngIf="typingUsers().length" class="typing" data-testid="typing-indicator"
      role="status" aria-live="polite">
-    {{ typingUsers().join(', ') }} {{ typingUsers().length === 1 ? 'is' : 'are' }} typing…
+    <ng-container *ngFor="let u of typingUsers(); let last = last"><span
+      [attr.data-testid]="'typing-user-' + u" [attr.title]="u">{{ typingLabel(u) }}</span>{{ last ? '' : ', ' }}</ng-container>
+    {{ typingUsers().length === 1 ? 'is' : 'are' }} typing…
   </p>
 
   <hug-composer [roomId]="rid" [target]="composerTarget()" [mode]="composerMode"

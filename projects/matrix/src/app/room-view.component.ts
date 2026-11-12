@@ -139,6 +139,11 @@ export class RoomViewComponent implements OnInit, OnChanges, OnDestroy {
   readonly liveEvents = computed(() => this.feed()?.timeline ?? null);
   readonly typingUsers = computed(() => (this.feed()?.typing ?? []).filter((u) => u !== this.me()));
 
+  /** A typer's NAME: display name the service has seen, else localpart. */
+  typingLabel(userId: string): string {
+    return displayLabel(userId, this.matrix.displayNameOf?.(userId));
+  }
+
   // ── VN live character (B2, Path A) ───────────────────────────────────────
   // The latest message-bearing timeline event drives an OPTIONAL character
   // beside the timeline: its sender owns the character, its content the

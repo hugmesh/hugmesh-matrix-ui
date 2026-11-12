@@ -879,12 +879,17 @@ export class MatrixService {
    * {@link labelFor} re-renders once a name arrives.
    */
   private readonly knownNames = signal<Record<string, string>>({});
+  /** Global PROFILE display names (getProfile). Kept apart from the room
+   *  member-event names above and preferred over them: a stale or bare
+   *  member event in one room must neither overwrite nor erase the name the
+   *  profile carries (whichever response lands last). */
+  private readonly profileNames = signal<Record<string, string>>({});
   /** Ids a profile lookup has already been issued for (dedupe; fail-soft). */
   private readonly profileLookups = new Set<string>();
 
-  /** The display name seen for `userId`, if any. */
+  /** The display name seen for `userId` (profile first, then member events). */
   displayNameOf(userId: string | null | undefined): string | undefined {
-    return userId ? this.knownNames()[userId] : undefined;
+    return userId ? (this.profileNames()[userId] ?? this.knownNames()[userId]) : undefined;
   }
 
   /** What to SHOW for `userId`: its display name, else its localpart — never
@@ -902,26 +907,33 @@ export class MatrixService {
   async resolveDisplayNames(userIds: Iterable<string | null | undefined>): Promise<void> {
     const todo: string[] = [];
     for (const id of userIds) {
-      if (!id || !isMxid(id) || this.knownNames()[id] || this.profileLookups.has(id)) continue;
+      if (!id || !isMxid(id) || this.profileNames()[id] || this.profileLookups.has(id)) continue;
       this.profileLookups.add(id);
       todo.push(id);
     }
     await Promise.all(todo.map((id) => this.getProfile(id).catch(() => undefined)));
   }
 
+  /** Record a ROOM-level (member event / roster / invite_state) display name.
+   *  An absent name is ignored, never treated as a delete: a bare member
+   *  event says nothing about the profile name. */
   private rememberName(userId: string, name: string | null | undefined): void {
     const trimmed = typeof name === 'string' ? name.trim() : '';
-    const current = this.knownNames()[userId];
-    if (trimmed) {
-      if (current === trimmed) return;
-      this.knownNames.update((m) => ({ ...m, [userId]: trimmed }));
-    } else if (current !== undefined) {
-      this.knownNames.update((m) => {
-        const next = { ...m };
-        delete next[userId];
-        return next;
-      });
-    }
+    if (!trimmed || this.knownNames()[userId] === trimmed) return;
+    this.knownNames.update((m) => ({ ...m, [userId]: trimmed }));
+  }
+
+  /** Record the authoritative PROFILE display name (or its absence). */
+  private rememberProfileName(userId: string, name: string | null | undefined): void {
+    const trimmed = typeof name === 'string' ? name.trim() : '';
+    const current = this.profileNames()[userId];
+    if (trimmed === (current ?? '')) return;
+    this.profileNames.update((m) => {
+      const next = { ...m };
+      if (trimmed) next[userId] = trimmed;
+      else delete next[userId];
+      return next;
+    });
   }
 
   /** Record the display names carried by joined members' m.room.member events. */
@@ -1476,7 +1488,7 @@ export class MatrixService {
     const r = await this.hsFetch(`${this.baseUrl}/_matrix/client/v3/profile/${this.enc(userId)}`, { headers: this.headers() });
     if (!r.ok) return { userId };
     const data = await r.json();
-    this.rememberName(userId, data.displayname);
+    this.rememberProfileName(userId, data.displayname);
     return { userId, displayName: data.displayname, avatarUrl: data.avatar_url };
   }
 
