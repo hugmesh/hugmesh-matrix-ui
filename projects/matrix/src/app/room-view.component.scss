@@ -10,13 +10,22 @@
 .room-body hug-timeline{display:flex;flex:1;min-width:0;min-height:0}
 .room-header{display:flex;align-items:center;gap:10px;padding:8px;border-bottom:1px solid #eee}
 .avatar{width:36px;height:36px;border-radius:50%;background:#ddd center/cover no-repeat;flex:none}
-.meta{flex:1;min-width:0}
+// A 12rem BASIS, not `flex:1` (basis 0): with basis 0 the title never claimed
+// room on a narrow header, so the phone header (which wraps, below) squeezed it
+// to a few glyphs and the inherited overflow-wrap:anywhere broke the room name
+// mid-word. Now the actions wrap under the title instead.
+.meta{flex:1 1 12rem;min-width:0}
 .meta h3{margin:0;font-size:15px}
-.topic{margin:0;font-size:12px;color:#777;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.member-count{font-size:12px;color:#888}
+// contain:inline-size: a one-line, ellipsised topic must not count toward the
+// page's intrinsic width. Without it a long topic set the min-content width of
+// the whole remote, and the shell (which shrink-wraps a routed view with auto
+// margins in a flex column) widened its panel to fit: 52px of sideways scroll
+// at 390px.
+.topic{margin:0;font-size:12px;color:t.$text-muted;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;contain:inline-size}
+.member-count{font-size:12px;color:t.$text-muted}
 .header-actions{display:flex;gap:8px}
 .header-actions a{text-decoration:none;font-size:16px}
-.typing{font-size:12px;color:#888;padding:2px 8px;margin:0}
+.typing{font-size:12px;color:t.$text-muted;padding:2px 8px;margin:0}
 
 // MOBILE: the header wraps instead of forcing horizontal scroll, and the
 // call/members/search/settings icon links grow to the 44px touch minimum.

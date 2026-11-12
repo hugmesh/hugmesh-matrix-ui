@@ -4,6 +4,17 @@ $surface:  #1c1c1c;
 $mid:      #3a3a3a;
 $muted:    #777777;
 $light:    #bbbbbb;
+
+// SECONDARY TEXT on this remote's dark panels (status lines, "Signed in as",
+// list headings, result counts, help). It is the host shell's muted token, so
+// a theme that repaints the shell repaints these too; the literal fallback is
+// the same #a8acc4 the shell and styles.scss define (8.77:1 on #0a0a12, about
+// 5.9:1 on the shell's lightest measured panel, rgb(43,49,55)).
+// Not $muted above, and never #555/#666/#777/#888 for text on a dark panel:
+// on that panel they measured 1.78, 2.21, 3.0 and 3.75:1 (WCAG AA needs 4.5).
+// Only for text on the panel itself: a light chip (#eee) or a light chat
+// theme (pastel, paper) needs a dark grey instead.
+$text-muted: var(--hug-text-muted, #a8acc4);
 $offwhite: #e8e8e8;
 
 $neon:        #ffd700;
@@ -43,6 +54,9 @@ $z-top:      9999;
 $transition-base: 0.2s ease;
 
 $bp-sm:  576px;
+// Phone layout switch for the chat shell: below it the room list stacks above
+// the room pane (matrix-chat + room-list component styles).
+$bp-phone: 600px;
 $bp-md:  768px;
 $bp-lg:  992px;
 $bp-xl:  1200px;

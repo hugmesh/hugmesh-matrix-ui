@@ -15,8 +15,8 @@
 .user-settings{display:flex;flex-direction:column;gap:8px;padding:8px;max-width:420px}
 header{display:flex;justify-content:space-between;align-items:center}
 label{display:flex;flex-direction:column;font-size:13px;gap:2px}
-.uid{font-size:13px;color:#555}
-.status{font-size:12px;color:#888}
+.uid{font-size:13px;color:t.$text-muted}
+.status{font-size:12px;color:t.$text-muted}
 
 // ── Chat appearance ──
 .chat-appearance{display:flex;flex-direction:column;gap:8px}
@@ -90,14 +90,15 @@ label{display:flex;flex-direction:column;font-size:13px;gap:2px}
 .mesh-row{display:flex;flex-direction:column;gap:4px;font-size:13px}
 .mesh-id{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .mesh-label{font-weight:600}
-.mesh-node{font-size:12px;color:#888}
+.mesh-node{font-size:12px;color:t.$text-muted}
 // Revoked rows stay listed but visually flagged (label struck, red marker).
-.mesh-row.revoked .mesh-label{text-decoration:line-through;color:#888}
-.mesh-revoked{font-size:11px;color:#c00}
+// Status reds/greens are the --hug-* tokens: #c00 measured ~2.3:1 on the dark panel.
+.mesh-row.revoked .mesh-label{text-decoration:line-through;color:t.$text-muted}
+.mesh-revoked{font-size:11px;color:var(--hug-error, #ff6b6b)}
 .mesh-status{margin:0}
 .mesh-actions{display:flex;align-items:flex-end;gap:8px}
 .mesh-visibility{font-size:12px}
-.mesh-error{margin:0;font-size:12px;color:#c00}
+.mesh-error{margin:0;font-size:12px;color:var(--hug-error, #ff6b6b)}
 
 @media (max-width: t.$bp-md), (pointer: coarse) {
   .mesh-actions select,

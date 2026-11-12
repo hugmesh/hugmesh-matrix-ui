@@ -7,6 +7,7 @@ import { UserBffService } from './user-bff.service';
 import { ModBffService, ModerationRequest } from './mod-bff.service';
 import { AdminBffService } from './admin-bff.service';
 import { expectDescribedByHelp } from './a11y-help.spec-util';
+import { frameAt } from './layout-frame.spec-util';
 
 /** Configurable SessionService stub: drives the role-tier signals. */
 class SessionStub {
@@ -271,5 +272,34 @@ describe('RoleActionsComponent', () => {
     fixture.detectChanges();
     const err = q('role-actions-error');
     expect(err?.getAttribute('role')).toBe('alert');
+  });
+
+  // ───────── GUI-19: no collision with the host shell's Bootstrap grid ─────────
+  // These rows were `.row`: federated, the host's Bootstrap grid matched them, so
+  // every control became a full-width cell (`.row > *{width:100%}`) inside a row
+  // with -12px gutters. The frame applies those host rules (HOST_PAGE_CSS).
+  it('keeps the block scope + button on one row inside the panel under the host page CSS', async () => {
+    // INLINE, as the moderation panel embeds it: a static full-width panel, so
+    // the row is measured against the panel rather than a popover's anchor.
+    await setup(true, false, false, false);
+    component.inline = true;
+    fixture.detectChanges();
+    if (!component.open()) {
+      component.toggle();
+      fixture.detectChanges();
+    }
+    const f = await frameAt(fixture.nativeElement as HTMLElement, 390, 844);
+    try {
+      const button = f.box('[data-testid="ra-block-user"]');
+      const select = f.box('[data-testid="ra-block-platform"]');
+      const row = f.root.querySelector('[data-testid="ra-block-user"]')!.parentElement!.getBoundingClientRect();
+      const panel = f.box('[data-testid="role-actions-menu"]');
+      expect(Math.abs(button.top - select.top)).withContext('scope and button share a row').toBeLessThanOrEqual(2);
+      expect(button.width).withContext('button is not a full-width grid cell').toBeLessThan(row.width * 0.75);
+      expect(row.left).withContext('row has no negative gutter').toBeGreaterThanOrEqual(panel.left - 0.5);
+      expect(row.right).withContext('row stays inside the panel').toBeLessThanOrEqual(panel.right + 0.5);
+    } finally {
+      f.remove();
+    }
   });
 });

@@ -1,3 +1,4 @@
+@use '../styles/tokens' as t;
 @use '../styles/chat-themes' as ct;
 
 // Per-user chat theming: ChatThemeService stamps data-matrix-* attributes on
@@ -6,9 +7,30 @@
 @include ct.chat-theme-host-rules;
 
 .hug-matrix{display:flex;flex-direction:column;height:100%}
-.topbar{display:flex;align-items:baseline;gap:16px;padding:6px 8px;border-bottom:1px solid #eee}
-.nav{margin-left:auto;display:flex;gap:12px}
+// TOPBAR WRAPS instead of squeezing. Both the shell and styles.scss set
+// `overflow-wrap:anywhere` on html/body, which makes every flex item's
+// min-content ONE GLYPH wide: with no wrapping, the row shrank the title and the
+// links until they broke mid-word ("Matri/x" at 1280px; "Ma/tri/x", "Searc/h",
+// "Setti/ngs" at 390px). So: the row wraps, the title and each link never shrink
+// or break, and the help sentence takes its own full-width row under them.
+.topbar{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 16px;padding:6px 8px;border-bottom:1px solid #eee}
+.topbar h2{flex:none;white-space:nowrap}
+.topbar [data-testid='matrix-whoami']{min-width:0}
+.topbar .section-help{flex:1 1 100%}
+.nav{margin-left:auto;display:flex;flex-wrap:wrap;gap:4px 12px}
+.nav a{white-space:nowrap}
 .shell{display:flex;flex:1;min-height:0}
+// PHONE: two side-by-side columns do not fit (the list kept its 160px floor and
+// the room pane overflowed the viewport). Below 600px the room list stacks ABOVE
+// the room pane, both full width. The list is capped and scrolls on its own, so
+// the selected room's pane still starts on the first screen and a long list can
+// never squeeze a height-constrained pane to nothing. room-list.component.scss
+// drops its fixed column width at the same breakpoint.
+@media (max-width: t.$bp-phone) {
+  .shell{flex-direction:column}
+  .shell > hug-room-list{display:block;flex:none;max-height:40vh;overflow:auto}
+  .shell > .empty{padding:16px 8px}
+}
 // The members pane is the third column on wide viewports. It is `flex:none` with its own
 // clamp so the TIMELINE stays the element that absorbs leftover width — the timeline is
 // the content, the panes are context.

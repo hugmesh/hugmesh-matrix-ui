@@ -98,7 +98,9 @@
   color: t.$pastel-sky;
 }
 
-.row {
+// `.action-row`, never `.row`: that name is the host shell's Bootstrap grid row
+// (negative gutters, full-width children) and leaks in when federated.
+.action-row {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;

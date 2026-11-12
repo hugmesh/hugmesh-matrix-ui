@@ -6,6 +6,7 @@ import { of } from 'rxjs';
 import { RoomViewComponent } from './room-view.component';
 import { HugCharacterPanelComponent } from './vn/hug-character-panel.component';
 import { MatrixService, RoomMember, RoomSummary, TimelineEvent } from './matrix.service';
+import { expectReadableOnDarkPanels } from './dark-panel-contrast.spec-util';
 
 type SyncRoom = { timeline: TimelineEvent[]; typing: string[] } | null;
 
@@ -318,5 +319,15 @@ describe('RoomViewComponent', () => {
       }
       expect(component.summary()?.name).toBe('Bravo');
     });
+  });
+
+  // ───────── GUI-19: secondary text on the DARK panel ─────────
+  it('the room topic, the member count and the typing line read at >= 4.5:1 on the dark panel', () => {
+    syncRoom.set({ timeline: [], typing: ['@bob:test'] });
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    expectReadableOnDarkPanels(el, '[data-testid="room-topic"]');
+    expectReadableOnDarkPanels(el, '.member-count');
+    expectReadableOnDarkPanels(el, '[data-testid="typing-indicator"]');
   });
 });
