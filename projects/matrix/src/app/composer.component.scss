@@ -48,8 +48,7 @@
 
 .status {
   font-size: 11px;
-  // --hug-text-muted, not $muted: #777 was 4.15:1 on the dark panel (WCAG 1.4.3).
-  color: var(--hug-text-muted, #a8acc4);
+  color: t.$muted;
   margin: 2px 0 0;
 }
 
@@ -172,8 +171,7 @@
 .field-help {
   margin: 4px 0 0;
   font-size: 11px;
-  // --hug-text-muted, not $muted: #777 was 4.15:1 on the dark panel (WCAG 1.4.3).
-  color: var(--hug-text-muted, #a8acc4);
+  color: t.$muted;
 }
 
 // ── Pending attachment tile (upload decoupled from send) ──
@@ -229,7 +227,7 @@
   }
 
   &.is-off {
-    color: var(--hug-text-muted, #a8acc4);
+    color: t.$muted;
   }
 }
 

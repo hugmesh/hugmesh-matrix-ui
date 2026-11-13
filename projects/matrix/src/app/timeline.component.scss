@@ -31,8 +31,7 @@
 .sender{font-weight:600;font-size:13px;color:var(--hugm-chat-accent, inherit)}
 /* Radio-provenance chip, following the .pill/.badge chip conventions. */
 .mesh-badge{font-size:11px;border:1px solid #b7a7e6;border-radius:12px;background:#f0ebfb;color:#4b3a7a;padding:0 6px;align-self:flex-start;white-space:nowrap}
-/* --hug-text-muted, not #666: #666 was 3.23:1 on the dark panel (WCAG 1.4.3). */
-.reply-quote{font-size:12px;color:var(--hug-text-muted, #a8acc4);border-left:2px solid #ccc;padding-left:6px}
+.reply-quote{font-size:12px;color:#666;border-left:2px solid #ccc;padding-left:6px}
 .edited-marker,.redacted-marker{color:#999;font-size:11px}
 .media{max-width:240px;max-height:240px;border-radius:6px}
 // MSC2545 stickers render smaller than inline images and keep transparency
