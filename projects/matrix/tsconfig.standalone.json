@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../../out-tsc/matrix-standalone",
+    "types": []
+  },
+  "files": ["src/main.standalone.ts"],
+  "include": ["src/**/*.d.ts"]
+}

@@ -3,7 +3,7 @@ import { Injectable, signal, computed } from '@angular/core';
 export interface HugSession {
   id: string;                 // casdoor identity, e.g. google:alice@gmail.com
   label: string;              // display (email or discord handle)
-  provider: 'google' | 'discord';
+  provider: 'google' | 'discord' | 'matrix';
   roles: string[];
   registrationComplete: boolean;
   // No bearer token is ever held here. Auth rides on the HttpOnly `bff_` session
