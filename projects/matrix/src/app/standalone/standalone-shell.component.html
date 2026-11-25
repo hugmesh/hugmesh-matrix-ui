@@ -1,0 +1,65 @@
+<a class="skip" href="#main-content">Skip to content</a>
+
+@switch (standalone.state()) {
+  @case ('loading') {
+    <p class="status" role="status">Loading…</p>
+  }
+  @case ('error') {
+    <section class="card" aria-labelledby="err-h">
+      <h1 id="err-h">The server is not reachable</h1>
+      <p>It did not answer. Check that it is running, then try again.</p>
+      <button type="button" class="primary" (click)="standalone.init()">Try again</button>
+    </section>
+  }
+  @case ('signed-out') {
+    <section class="card" aria-labelledby="signin-h">
+      <h1 id="signin-h">{{ title() }}</h1>
+      <p>Sign in with your account on this server.</p>
+      <form (ngSubmit)="submit()" autocomplete="on">
+        <label>
+          Username
+          <input name="username" type="text" [(ngModel)]="username" autocomplete="username" autocapitalize="none"
+                 spellcheck="false" required data-testid="username" />
+        </label>
+        <label>
+          Password
+          <input name="password" type="password" [(ngModel)]="password" autocomplete="current-password" required
+                 data-testid="password" />
+        </label>
+        @switch (standalone.problem()) {
+          @case ('wrong-credentials') { <p class="problem" role="alert">That username and password were not accepted.</p> }
+          @case ('too-many-attempts') { <p class="problem" role="alert">Too many attempts. Wait a minute and try again.</p> }
+          @case ('unavailable') { <p class="problem" role="alert">The server could not be reached. Try again.</p> }
+        }
+        <button type="submit" class="primary" [disabled]="standalone.busy()" data-testid="sign-in">
+          {{ standalone.busy() ? 'Signing in…' : 'Sign in' }}
+        </button>
+      </form>
+    </section>
+  }
+  @case ('signed-in') {
+    <header class="bar">
+      <span class="brand">{{ title() }}</span>
+      <nav aria-label="Main">
+        <ul>
+          @for (item of nav; track item.path) {
+            <li>
+              <a [routerLink]="item.path" routerLinkActive="current" [routerLinkActiveOptions]="{ exact: item.path === '/' }"
+                 ariaCurrentWhenActive="page">{{ item.label }}</a>
+            </li>
+          }
+          @if (session.isMod()) {
+            <li><a routerLink="/moderation" routerLinkActive="current" ariaCurrentWhenActive="page">Moderation</a></li>
+          }
+        </ul>
+      </nav>
+      <span class="who">
+        <span data-testid="who">{{ session.session()?.label }}</span>
+        <button type="button" (click)="signOut()" data-testid="sign-out">Sign out</button>
+      </span>
+    </header>
+    <main id="main-content" tabindex="-1">
+      <router-outlet />
+    </main>
+  }
+}

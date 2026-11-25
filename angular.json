@@ -163,6 +163,60 @@
 					},
 					"defaultConfiguration": "production"
 				},
+					"standalone": {
+						"builder": "@angular-devkit/build-angular:application",
+						"options": {
+							"outputPath": "dist/standalone",
+							"index": {
+								"input": "projects/matrix/src/index.standalone.html",
+								"output": "index.html"
+							},
+							"browser": "projects/matrix/src/main.standalone.ts",
+							"polyfills": [
+								"zone.js"
+							],
+							"tsConfig": "projects/matrix/tsconfig.standalone.json",
+							"assets": [
+								{
+									"glob": "**/*",
+									"input": "projects/matrix/src/assets",
+									"output": "assets"
+								},
+								{
+									"glob": "**/*",
+									"input": "node_modules/@mediapipe/tasks-vision/wasm",
+									"output": "assets/mediapipe/wasm"
+								},
+								{
+									"glob": "favicon.ico",
+									"input": "projects/matrix/src",
+									"output": ""
+								}
+							],
+							"styles": [
+								"projects/matrix/src/styles.scss"
+							]
+						},
+						"configurations": {
+							"production": {
+								"outputHashing": "all",
+								"optimization": {
+									"scripts": true,
+									"styles": {
+										"minify": true,
+										"inlineCritical": false
+									},
+									"fonts": true
+								}
+							},
+							"development": {
+								"optimization": false,
+								"extractLicenses": false,
+								"sourceMap": true
+							}
+						},
+						"defaultConfiguration": "production"
+					},
 				"serve-original": {
 					"builder": "@angular-devkit/build-angular:dev-server",
 					"options": {

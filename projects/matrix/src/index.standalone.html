@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Matrix</title>
+  <base href="/" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Standalone/dev serving branding: under the hugmesh.net host shell
+       the host owns the tab chrome; these only surface when served alone. -->
+  <link rel="icon" href="favicon.ico" sizes="any" />
+  <meta name="theme-color" content="#0a0a12" />
+  <meta name="description" content="HugMesh Matrix chat — rooms, DMs, threads, calls and moderation on the HugMesh platform." />
+  <!-- Runtime theme (fleet 50-hug-theme.sh mechanism): RELATIVE href so it
+       resolves under this app's mount behind the gateway; the file's
+       :root:root block out-specifies the compiled :root fallbacks regardless
+       of stylesheet order. Empty when unthemed (zero-byte 200, no 404). -->
+  <link rel="stylesheet" href="hug-theme.css">
+</head>
+<body>
+  <hug-standalone-root></hug-standalone-root>
+</body>
+</html>

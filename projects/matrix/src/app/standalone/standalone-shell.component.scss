@@ -1,0 +1,130 @@
+:host {
+  display: block;
+  color: var(--hug-text, #e8e8f0);
+}
+
+.skip {
+  position: absolute;
+  inset-inline-start: -999px;
+  &:focus {
+    inset-inline-start: 0.5rem;
+    top: 0.5rem;
+    z-index: 10;
+    padding: 0.5rem 0.75rem;
+    background: var(--hug-bg-1, #14141f);
+  }
+}
+
+.status {
+  padding: 2rem;
+  text-align: center;
+}
+
+.card {
+  max-width: 26rem;
+  margin: 12vh auto 0;
+  padding: 2rem;
+  border: 1px solid var(--hug-border, #2a2a3a);
+  border-radius: 0.75rem;
+  background: var(--hug-bg-1, #14141f);
+  text-align: center;
+
+  h1 {
+    margin: 0 0 0.5rem;
+  }
+}
+
+.problem {
+  color: #ff8b8b;
+}
+
+.primary {
+  display: inline-block;
+  margin-top: 1rem;
+  padding: 0.6rem 1.4rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: var(--hug-accent, #7c6cff);
+  color: #fff;
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.25rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--hug-border, #2a2a3a);
+  background: var(--hug-bg-1, #14141f);
+
+  .brand {
+    font-weight: 700;
+  }
+
+  nav {
+    flex: 1 1 auto;
+  }
+
+  ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  a {
+    color: var(--hug-text-muted, #a8a8bc);
+    text-decoration: none;
+    &.current {
+      color: var(--hug-text, #e8e8f0);
+      border-bottom: 2px solid var(--hug-accent, #7c6cff);
+    }
+  }
+
+  .who {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  button {
+    font: inherit;
+    cursor: pointer;
+  }
+}
+
+main {
+  display: block;
+  min-height: calc(100vh - 3rem);
+  padding-block: 1rem;
+  &:focus {
+    outline: none;
+  }
+}
+
+form {
+  display: grid;
+  gap: 0.9rem;
+  text-align: start;
+  margin-top: 1rem;
+
+  label {
+    display: grid;
+    gap: 0.3rem;
+    font-size: 0.9rem;
+  }
+
+  input {
+    padding: 0.55rem 0.7rem;
+    border: 1px solid var(--hug-border, #2a2a3a);
+    border-radius: 0.4rem;
+    background: var(--hug-bg-0, #0a0a12);
+    color: inherit;
+    font: inherit;
+  }
+}
