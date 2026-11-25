@@ -1,0 +1,68 @@
+# Pull-request CI: install, unit tests (Karma, ChromeHeadlessCI) and the production build.
+# Added by hugmesh-generator#954: this repo had no workflow that runs on a pull request, so a PR could
+# merge on review alone onto a main that does not build or pass its tests.
+#
+# Advisory today: required status checks cannot be set on this plan (branch protection answers 403 until
+# the plan changes), so a red check does not block a merge by itself. Read it before merging.
+#
+# GitHub-hosted `ubuntu-latest`, written literally: this runs on pull_request and the repository is public,
+# so it must never name a self-hosted runner (a fork's PR runs the fork's copy of this file).
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A superseded run is cancelled, so the check always reflects the latest commit.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '24'   # matches the Dockerfile's node:24-alpine build stage
+
+jobs:
+  unit:
+    name: Unit tests (npm test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      # Karma's ChromeHeadlessCI launcher needs a Chrome binary; the hosted image carries one.
+      - name: Locate a headless Chrome
+        run: |
+          set -eu
+          for c in /usr/bin/google-chrome /usr/bin/google-chrome-stable \
+                   /usr/bin/chromium /usr/bin/chromium-browser; do
+            if [ -x "$c" ]; then
+              echo "CHROME_BIN=$c" >> "$GITHUB_ENV"
+              echo "using $c"
+              "$c" --version || true
+              exit 0
+            fi
+          done
+          echo "::error::no Chrome binary on this runner image; karma cannot launch ChromeHeadlessCI"
+          exit 1
+      - run: npm test
+
+  build:
+    name: Production build (npm run build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
