@@ -23,6 +23,17 @@ export interface UserBlock {
 
 export type BlockPlatform = 'matrix' | 'mastodon' | 'internal';
 
+/**
+ * One row of the member directory (GET /bff/user/directory/search): a mesh user on the caller's own
+ * domain (every domain for a superadmin). Username, Matrix localpart and domain only; there is no
+ * e-mail address in it and the picker never asks for one.
+ */
+export interface MeshUser {
+  username: string;
+  matrixLocalpart: string | null;
+  domain: string | null;
+}
+
 /** POST /bff/user/blocks acknowledgement ({ block, pushed, external }). */
 export interface BlockAck {
   block: UserBlock;
@@ -187,6 +198,15 @@ export class UserBffService {
   private readonly blocksSubject = new BehaviorSubject<UserBlock[]>([]);
   /** The caller's own self-blocks (latest list loaded). */
   readonly blocks$: Observable<UserBlock[]> = this.blocksSubject.asObservable();
+
+  /** Find mesh users by name for a type-to-find box. The server scopes it to the caller's domain
+   *  (a superadmin sees every domain), caps it, and answers empty under two characters. */
+  searchDirectory(q: string, limit = 8): Observable<MeshUser[]> {
+    return this.http.get<MeshUser[]>(`${this.base}/directory/search`, {
+      params: { q, limit: String(limit) },
+      withCredentials: true,
+    });
+  }
 
   /** List my self-blocks and push onto {@link blocks$}. */
   list(): Observable<UserBlock[]> {

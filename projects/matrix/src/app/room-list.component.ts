@@ -1,3 +1,4 @@
+import { MeshUserPickerComponent } from './mesh-user-picker.component';
 import { Component, EventEmitter, Input, OnInit, Output, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -15,7 +16,7 @@ import { displayLabel } from './display-label';
 @Component({
   selector: 'hug-room-list',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, MeshUserPickerComponent],
   templateUrl: './room-list.component.html',
   styleUrl: './room-list.component.scss',
 })
