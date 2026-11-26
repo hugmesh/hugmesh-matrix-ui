@@ -58,10 +58,9 @@
     <span aria-hidden="true">🏠</span> Local-only: your account is domain-locked, so you can only invite users on your own domain.
   </p>
   <label for="rs-invite">Invite user
-    <hug-mesh-user-picker inputId="rs-invite" testId="input-invite" [(ngModel)]="inviteUser" placeholder="@user:server"
-                          [disabled]="readOnly()"
-                          [describedBy]="describedBy(domainLocked() && 'rs-invite-help', readOnly() && 'rs-readonly-help')"
-                          (enterKey)="doInvite()" />
+    <input id="rs-invite" data-testid="input-invite" [(ngModel)]="inviteUser" placeholder="@user:server"
+           [disabled]="readOnly()"
+           [attr.aria-describedby]="describedBy(domainLocked() && 'rs-invite-help', readOnly() && 'rs-readonly-help')" />
   </label>
   <button type="button" data-testid="btn-room-invite"
           [disabled]="inviteBlocked() || readOnly()"

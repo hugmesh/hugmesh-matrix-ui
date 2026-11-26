@@ -80,8 +80,8 @@
 
   <form *ngIf="showDm()" class="dialog" aria-label="Start direct message" (submit)="startDm($event)">
     <label class="sr" for="dm-user">User to message</label>
-    <hug-mesh-user-picker name="dmUser" inputId="dm-user" [(ngModel)]="dmUser"
-                          placeholder="@user:server" describedBy="rl-dm-help" />
+    <input id="dm-user" [(ngModel)]="dmUser" name="dmUser" placeholder="@user:server"
+           aria-describedby="rl-dm-help" />
     <button type="submit">Start DM</button>
     <p *ngIf="dmError()" class="error" role="alert" aria-live="assertive" data-testid="rl-dm-error">
       {{ dmError() }}

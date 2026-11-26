@@ -1,4 +1,3 @@
-import { MeshUserPickerComponent } from './mesh-user-picker.component';
 import { Component, Input, OnChanges, OnDestroy, OnInit, SimpleChanges, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -21,7 +20,7 @@ import { mountRoute } from './mount-route';
 @Component({
   selector: 'hug-member-list',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, RoleActionsComponent, MeshUserPickerComponent],
+  imports: [CommonModule, FormsModule, RouterLink, RoleActionsComponent],
   templateUrl: './member-list.component.html',
   styleUrl: './member-list.component.scss',
 })
