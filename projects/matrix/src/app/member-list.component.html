@@ -23,9 +23,9 @@
 
   <div class="invite-row">
     <label class="sr" for="member-invite">Invite a user by id</label>
-    <input id="member-invite" data-testid="input-invite-user" [(ngModel)]="inviteUser"
-           placeholder="@user:server" aria-describedby="member-invite-help"
-           (keyup.enter)="doInvite()" />
+    <hug-mesh-user-picker inputId="member-invite" testId="input-invite-user" [(ngModel)]="inviteUser"
+                          placeholder="@user:server" describedBy="member-invite-help"
+                          (enterKey)="doInvite()" />
     <button type="button" data-testid="btn-invite"
             aria-describedby="member-invite-help" (click)="doInvite()">Invite</button>
   </div>

@@ -1,3 +1,4 @@
+import { MeshUserPickerComponent } from './mesh-user-picker.component';
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -37,7 +38,7 @@ export const MESH_BRIDGE_BOT_LOCALPART = 'meshbridge';
 @Component({
   selector: 'hug-room-settings',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink, MeshUserPickerComponent],
   templateUrl: './room-settings.component.html',
   styleUrl: './room-settings.component.scss',
 })
